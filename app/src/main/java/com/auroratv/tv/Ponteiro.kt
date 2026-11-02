@@ -63,6 +63,7 @@ object Ponteiro {
         seguidos = 0
         ultimaDir = 0
         if (v && (x < 0f || y < 0f)) centralizar()
+        android.util.Log.i("AuroraSeta", "seta=" + v)
     }
 
     fun alternar(): Boolean {

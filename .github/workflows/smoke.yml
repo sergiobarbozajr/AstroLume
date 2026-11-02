@@ -80,6 +80,8 @@ jobs:
             # Teste do teclado unico: abre num campo, digita uma tecla e fecha no PRONTO.
             # Comeca com "astro" escrito; a primeira tecla da grade e "1", entao tem de voltar "astro1".
             adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv --es aurora_teclado "astro" > /dev/null; sleep 14; adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 1; adb shell input keyevent KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN; sleep 1; adb shell input keyevent KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 3; adb logcat -d -s AuroraTeclado:I | sed "s/.*AuroraTeclado: //" | tr "\n" "|" > teclado.txt || true
+            # Modo seta: F2 liga, as setas movem a seta e ela tem de cair em cima de algum alvo.
+            adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv > /dev/null; sleep 16; adb shell input keyevent KEYCODE_F2; sleep 2; adb shell input keyevent KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN; sleep 2; adb shell input keyevent KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_RIGHT; sleep 3; adb logcat -d -s AuroraSeta:I | sed "s/.*AuroraSeta: //" | tr "\n" "|" > seta.txt || true
             # volta para a versao de producao: a fluidez tem de ser medida no que vai ser publicado
             adb install -r app/build/outputs/apk/tv/release/app-tv-release.apk
             adb shell am force-stop com.auroratv.tv; adb shell monkey -p com.auroratv.tv -c android.intent.category.LAUNCHER 1; sleep 22
@@ -169,6 +171,11 @@ jobs:
           RF=$(cat refeito.txt 2>/dev/null | tr -dc "0-9"); RF=${RF:-0}
           echo "::notice title=Piscada::player refeito $RF vez(es) em 1 minuto tocando"
           if [ "$RF" -gt 1 ]; then echo "::error title=Piscada::o player foi refeito $RF vezes durante a reproducao (cada vez apaga a tela)"; exit 1; fi
+          # modo seta: tem de ligar e parar em cima de algum alvo registrado
+          ST=$(cat seta.txt 2>/dev/null | cut -c1-400)
+          echo "::notice title=Modo seta::${ST:-sem resposta}"
+          if ! echo "$ST" | grep -q "seta=true"; then echo "::error title=Modo seta::nao ligou com o botao"; exit 1; fi
+          if ! echo "$ST" | grep -q "alvo="; then echo "::error title=Modo seta::ligou mas nao encostou em nenhum item da tela"; exit 1; fi
           # teclado unico: tem de abrir no campo, aceitar a tecla e devolver o texto ao fechar
           TEC=$(cat teclado.txt 2>/dev/null | cut -c1-400)
           echo "::notice title=Teclado::${TEC:-sem resposta}"
@@ -212,4 +219,5 @@ jobs:
             audio.txt
             teclado.txt
             refeito.txt
+            seta.txt
             reproducao.txt

@@ -441,6 +441,8 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
     var tecOk by remember { mutableStateOf<(String) -> Unit>({}) }
     var tecR by remember { mutableStateOf(0) }
     var tecC by remember { mutableStateOf(0) }
+    // último alvo anunciado no log, para o teste no emulador conferir a seta sem encher o log
+    var setaUltimo by remember { mutableStateOf("") }
     var exitSel by remember { mutableStateOf(0) }
     var iptvFirst by remember { mutableStateOf(false) }
     var keymapStep by remember { mutableStateOf(0) }
@@ -1889,6 +1891,10 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
      */
     fun focoDaSeta() {
         val id = Ponteiro.sob() ?: return
+        if (id != setaUltimo) {
+            setaUltimo = id
+            android.util.Log.i("AuroraSeta", "alvo=" + id)
+        }
         val p = id.split(":")
         when (p[0]) {
             "nav" -> {
