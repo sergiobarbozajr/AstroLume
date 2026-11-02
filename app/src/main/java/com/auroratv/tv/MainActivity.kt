@@ -1,6 +1,5 @@
 package com.auroratv.tv
 
-import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.media.tv.TvContract
@@ -12,9 +11,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.speech.RecognizerIntent
-import android.text.InputType
 import android.util.DisplayMetrics
-import android.widget.EditText
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -142,6 +139,9 @@ var isTvUi = true
 var testUrl: String? = null
 var testTheme = -1
 
+/** Só no APK de teste: abre o teclado do app sozinho, para a esteira conferir que ele abre, escreve e fecha. */
+var testTeclado: String? = null
+
 class MainActivity : ComponentActivity() {
     lateinit var speech: ActivityResultLauncher<Intent>
     var onSpeech: ((String?) -> Unit)? = null
@@ -180,6 +180,7 @@ class MainActivity : ComponentActivity() {
         SomIa.enabled = Store.somIa == 1
         if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) testUrl = intent?.getStringExtra("aurora_test")
         if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) testTheme = intent?.getIntExtra("aurora_theme", -1) ?: -1
+        if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) testTeclado = intent?.getStringExtra("aurora_teclado")
         Store.musicUri = ""
         customKeys = parseKeys(Store.keymap)
         val json = assets.open("catalog.json").bufferedReader().use { it.readText() }
@@ -340,12 +341,19 @@ internal fun buildFree(catalog: Catalog, extra: List<Item>): FreeData {
     return FreeData(lg(ant), lg(net), lg(intl), films, lg(anime), lg(news), lg(docs))
 }
 
+/**
+ * Um teclado só para todo o app: a busca e todos os campos de texto (endereço, usuário, senha,
+ * proxy, senha do adulto) usam estas mesmas teclas, na mesma ordem.
+ * Ganhou a linha de símbolos porque endereço de IPTV precisa de ":", "/" e ".", que antes só
+ * existiam no teclado do sistema.
+ */
 private val KEYS = listOf(
     listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0"),
     listOf("A", "B", "C", "D", "E", "F", "G", "H", "I", "J"),
     listOf("K", "L", "M", "N", "O", "P", "Q", "R", "S", "T"),
-    listOf("U", "V", "W", "X", "Y", "Z", "ESPAÇO", "APAGAR", "MIC"),
-    listOf("CANCELAR", "APAGAR TUDO", "PRONTO")
+    listOf("U", "V", "W", "X", "Y", "Z", ".", "-", "_", "@"),
+    listOf(":", "/", "?", "=", "&", "+", "%", "#", "ESPAÇO", "APAGAR"),
+    listOf("aA", "MIC", "CANCELAR", "APAGAR TUDO", "PRONTO")
 )
 
 private val TEST_COLORS = listOf(
@@ -419,6 +427,15 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
     var kr by remember { mutableStateOf(0) }
     var kc by remember { mutableStateOf(0) }
     var listening by remember { mutableStateOf(false) }
+    // teclado único do app: todo campo de texto (endereço, usuário, senha, proxy, PIN) escreve aqui,
+    // com as mesmas teclas da busca. Abre ao confirmar o campo e fecha ao confirmar o texto.
+    var tecTit by remember { mutableStateOf<String?>(null) }
+    var tecTxt by remember { mutableStateOf("") }
+    var tecSec by remember { mutableStateOf(false) }
+    var tecMai by remember { mutableStateOf(false) }
+    var tecOk by remember { mutableStateOf<(String) -> Unit>({}) }
+    var tecR by remember { mutableStateOf(0) }
+    var tecC by remember { mutableStateOf(0) }
     var exitSel by remember { mutableStateOf(0) }
     var iptvFirst by remember { mutableStateOf(false) }
     var keymapStep by remember { mutableStateOf(0) }
@@ -861,22 +878,19 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
         }
     }
 
+    /**
+     * Abre o teclado do app no campo pedido. Antes isto abria a caixa de texto do sistema, que na TV
+     * vem com outro teclado, outro jeito de apagar e às vezes cobre a tela inteira — e o app ficava
+     * com dois teclados diferentes. Agora é sempre o mesmo: abre ao confirmar o campo, fecha no PRONTO.
+     */
     fun askText(title: String, initial: String, secret: Boolean, onOk: (String) -> Unit) {
-        try {
-            val et = EditText(context)
-            et.setText(initial)
-            et.setSingleLine(true)
-            et.inputType = if (secret) InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            else InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
-            et.setSelection(et.text.length)
-            AlertDialog.Builder(context)
-                .setTitle(title)
-                .setView(et)
-                .setPositiveButton("OK") { _, _ -> onOk(et.text.toString()) }
-                .setNegativeButton("Cancelar", null)
-                .show()
-        } catch (e: Exception) {
-        }
+        tecTit = title
+        tecTxt = initial
+        tecSec = secret
+        tecR = 0
+        tecC = 0
+        tecOk = onOk
+        android.util.Log.i("AuroraTeclado", "abriu: " + title + " · letras=" + initial.length)
     }
 
     fun startVoice() {
@@ -887,7 +901,8 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
             activity.onSpeech = { txt ->
                 listening = false
                 if (txt != null && txt.isNotBlank()) {
-                    query = txt.lowercase()
+                    // o mesmo microfone serve para a busca e para os campos: escreve onde está o foco
+                    if (tecTit != null) tecTxt = txt.trim() else query = txt.lowercase()
                     showToast("Entendi: “$txt”")
                 }
             }
@@ -1369,7 +1384,51 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                 }
             }
             "MIC" -> startVoice()
-            else -> query += k.lowercase()
+            "aA" -> tecMai = !tecMai
+            else -> query += if (tecMai) k.uppercase() else k.lowercase()
+        }
+    }
+
+    /** Uma tecla do teclado único, quando ele está escrevendo num campo (e não na busca). */
+    fun tecKey(k: String) {
+        when (k) {
+            "ESPAÇO" -> tecTxt += " "
+            "APAGAR" -> tecTxt = tecTxt.dropLast(1)
+            "APAGAR TUDO" -> tecTxt = ""
+            "aA" -> tecMai = !tecMai
+            "MIC" -> startVoice()
+            "CANCELAR" -> {
+                android.util.Log.i("AuroraTeclado", "cancelou")
+                tecTit = null
+            }
+            "PRONTO" -> {
+                val t = tecTxt
+                val f = tecOk
+                tecTit = null
+                tecMai = false
+                android.util.Log.i("AuroraTeclado", "pronto: " + t)
+                f(t)
+            }
+            else -> if (tecTxt.length < 300) tecTxt += if (tecMai) k.uppercase() else k.lowercase()
+        }
+    }
+
+    /** Navegação dentro do teclado único. Vale em qualquer tela: enquanto ele está aberto, é ele que manda. */
+    fun tecAct(a: String) {
+        when (a) {
+            "back" -> tecTit = null
+            "up" -> {
+                tecR = max(0, tecR - 1)
+                tecC = min(tecC, KEYS[tecR].size - 1)
+            }
+            "down" -> {
+                tecR = min(KEYS.size - 1, tecR + 1)
+                tecC = min(tecC, KEYS[tecR].size - 1)
+            }
+            "left" -> tecC = max(0, tecC - 1)
+            "right" -> tecC = min(KEYS[tecR].size - 1, tecC + 1)
+            "ok" -> tecKey(KEYS[tecR][tecC])
+            "home" -> tecTit = null
         }
     }
 
@@ -1759,6 +1818,13 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
         }
     }
 
+    // teste do teclado único (só debug): abre, escreve o que vier escrito e devolve no log
+    LaunchedEffect(Unit) {
+        val tt = testTeclado ?: return@LaunchedEffect
+        delay(8000)
+        askText("Teste do teclado", tt, false) { android.util.Log.i("AuroraTeclado", "campo recebeu: " + it) }
+    }
+
     // teste automático (só debug): toca, confere áudio, pula 10 s, sai e volta para conferir a retomada
     LaunchedEffect(Unit) {
         val tu = testUrl ?: return@LaunchedEffect
@@ -1801,6 +1867,11 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
     fun act(a: String) {
         navAt = android.os.SystemClock.uptimeMillis()
         if (zone != Z.PLAYER && !(zone == Z.SOUND && sndFromPlayer)) Sound.click()
+        // teclado aberto: ele atende primeiro, em qualquer tela, e sai sozinho no PRONTO
+        if (tecTit != null) {
+            tecAct(a)
+            return
+        }
         when (zone) {
             Z.INTRO -> finishIntro()
             Z.PLAYER -> playerAct(a)
@@ -2091,7 +2162,7 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                     } else if (zone != Z.IPTV) {
                         ContentScreen(
                             sec, rows, base, zone == Z.CONTENT, row, col, favs, query, kbd, kr, kc, listening, curCard(), pb.health,
-                            fTipo, fAno, fOrdem, fCampo
+                            fTipo, fAno, fOrdem, fCampo, tecMai
                         )
                     }
                     Sidebar(nav, zone == Z.NAV, adultoOk)
@@ -2104,6 +2175,8 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                     }
                     if (zone == Z.IPTV && confirmar.isNotEmpty()) ConfirmBox(confirmar)
                     if (zone == Z.EXIT) ExitDialog(exitSel)
+                    val tt = tecTit
+                    if (tt != null) TecladoBox(tt, tecTxt, tecSec, tecMai, tecR, tecC, listening)
                     if (zone == Z.KEYMAP) KeymapBox(keymapStep, keymapLast)
                     if (zone == Z.SOUND) SoundBox(sndSel, soundLvl, keysLvl, eqTick, false)
                     if (zone == Z.READER) ReaderBox(reader)
@@ -2429,7 +2502,7 @@ private fun RowsView(rows: List<RowData>, base: Int, active: Boolean, row: Int, 
 private fun ContentScreen(
     sec: Section, rows: List<RowData>, base: Int, active: Boolean, row: Int, col: Int, favs: List<String>,
     query: String, kbd: Boolean, kr: Int, kc: Int, listening: Boolean, cur: Card?, health: Map<String, Int>,
-    fTipo: Int, fAno: Int, fOrdem: Int, fCampo: Int,
+    fTipo: Int, fAno: Int, fOrdem: Int, fCampo: Int, maiusc: Boolean,
 ) {
     val withHero = sec.kind != "search" && sec.kind != "lists"
     // a barra lateral ocupa até 280; o conteúdo começa logo depois, com uma folga de respiro.
@@ -2499,7 +2572,13 @@ private fun ContentScreen(
                         r.forEachIndexed { ci, key ->
                             val f = kr == ri && kc == ci
                             val ks = RoundedCornerShape(u(9))
-                            val lab = if (key == "MIC") (if (listening) "Ouvindo…" else "🎙 Falar") else key
+                            val lab = when {
+                                key == "MIC" -> if (listening) "Ouvindo…" else "🎙 Falar"
+                                key == "aA" -> if (maiusc) "ABC" else "abc"
+                                key.length == 1 && maiusc -> key.uppercase()
+                                key.length == 1 -> key.lowercase()
+                                else -> key
+                            }
                             Box(
                                 Modifier.weight(1f).height(u(40))
                                     .background(if (key == "MIC" && listening) CLive else if (f) CCardHi else CCard, ks)
@@ -2812,6 +2891,64 @@ private fun ExitDialog(sel: Int) {
                     contentAlignment = Alignment.Center
                 ) { Text("Sair", color = if (sel == 1) Color(0xFF2A050C) else CLight, fontSize = ts(19), fontWeight = FontWeight.ExtraBold) }
             }
+        }
+    }
+}
+
+/**
+ * O teclado do app escrevendo num campo. É o mesmo desenho e a mesma ordem de teclas da busca,
+ * para a pessoa não ter que aprender dois teclados dentro do mesmo aplicativo.
+ */
+@Composable
+private fun TecladoBox(titulo: String, texto: String, secreto: Boolean, maiusc: Boolean, kr: Int, kc: Int, ouvindo: Boolean) {
+    Box(Modifier.fillMaxSize().background(Color(0xD802030A)), contentAlignment = Alignment.Center) {
+        val shape = RoundedCornerShape(u(18))
+        Column(
+            Modifier.width(u(760)).background(CPanel, shape).border(BorderStroke(u(1), Color(0xFF262C3B)), shape).padding(u(26)),
+        ) {
+            Text(titulo, color = CInk, fontSize = ts(22), fontWeight = FontWeight.ExtraBold, maxLines = 2)
+            Spacer(Modifier.height(u(12)))
+            val cs = RoundedCornerShape(u(12))
+            Box(
+                Modifier.fillMaxWidth().height(u(58)).background(CCard, cs)
+                    .border(BorderStroke(u(2), Color(0xFFCFE9FF)), cs).padding(horizontal = u(18)),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                val mostra = if (secreto) "•".repeat(texto.length) else texto
+                Text(
+                    mostra + "|", color = Color.White, fontSize = ts(21),
+                    fontWeight = FontWeight.SemiBold, maxLines = 1,
+                )
+            }
+            Spacer(Modifier.height(u(14)))
+            KEYS.forEachIndexed { ri, r ->
+                Row(Modifier.fillMaxWidth().padding(bottom = u(8)), horizontalArrangement = Arrangement.spacedBy(u(8))) {
+                    r.forEachIndexed { ci, key ->
+                        val f = kr == ri && kc == ci
+                        val ks = RoundedCornerShape(u(9))
+                        val lab = when {
+                            key == "MIC" -> if (ouvindo) "Ouvindo…" else "🎙 Falar"
+                            key == "aA" -> if (maiusc) "ABC" else "abc"
+                            key.length == 1 && maiusc -> key.uppercase()
+                            key.length == 1 -> key.lowercase()
+                            else -> key
+                        }
+                        Box(
+                            Modifier.weight(1f).height(u(42))
+                                .background(if (key == "MIC" && ouvindo) CLive else if (f) CCardHi else CCard, ks)
+                                .then(if (f) Modifier.border(BorderStroke(u(2), Color(0xFFCFE9FF)), ks) else Modifier),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                lab,
+                                color = if (key == "MIC" && !ouvindo) CAccent else if (f) Color.White else CLight,
+                                fontSize = ts(16), fontWeight = FontWeight.Bold, maxLines = 1,
+                            )
+                        }
+                    }
+                }
+            }
+            Text("setas escolhem · OK digita · PRONTO salva e fecha · Voltar cancela", color = CDim, fontSize = ts(14))
         }
     }
 }

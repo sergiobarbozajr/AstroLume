@@ -75,6 +75,9 @@ jobs:
             adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv --es aurora_test "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" > /dev/null; sleep 44; L=$(adb logcat -d -s AuroraTest:I | grep -m1 "playing=true" | sed "s/.*AuroraTest: //" | cut -c1-140); echo "${L:-NAO TOCOU x36xhzz.m3u8}" >> reproducao.txt
             adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv --es aurora_test "https://test-streams.mux.dev/test_001/stream.m3u8" > /dev/null; sleep 44; L=$(adb logcat -d -s AuroraTest:I | grep -m1 "playing=true" | sed "s/.*AuroraTest: //" | cut -c1-140); echo "${L:-NAO TOCOU stream.m3u8}" >> reproducao.txt
             adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv --es aurora_test "https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_fmp4/master.m3u8" > /dev/null; sleep 44; L=$(adb logcat -d -s AuroraTest:I | grep -m1 "playing=true" | sed "s/.*AuroraTest: //" | cut -c1-140); echo "${L:-NAO TOCOU master.m3u8}" >> reproducao.txt
+            # Teste do teclado unico: abre num campo, digita uma tecla e fecha no PRONTO.
+            # Comeca com "astro" escrito; a primeira tecla da grade e "1", entao tem de voltar "astro1".
+            adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv --es aurora_teclado "astro" > /dev/null; sleep 14; adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 1; adb shell input keyevent KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN; sleep 1; adb shell input keyevent KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 3; adb logcat -d -s AuroraTeclado:I | sed "s/.*AuroraTeclado: //" | tr "\n" "|" > teclado.txt || true
             # volta para a versao de producao: a fluidez tem de ser medida no que vai ser publicado
             adb install -r app/build/outputs/apk/tv/release/app-tv-release.apk
             adb shell am force-stop com.auroratv.tv; adb shell monkey -p com.auroratv.tv -c android.intent.category.LAUNCHER 1; sleep 22
@@ -160,6 +163,11 @@ jobs:
           if [ -n "$R50" ] && [ -n "$RF" ] && [ "$RF" -ge 20 ]; then LIM=$(( R50 * 5 / 2 )); [ "$LIM" -lt 34 ] && LIM=34; fi
           if [ -n "$P50" ] && [ "$P50" -gt "$LIM" ]; then echo "::error title=Fluidez::mediana ${P50}ms (limite ${LIM}ms, referencia do sistema ${R50:-?}ms)"; exit 1; fi
           if [ -n "$P95" ] && [ "$P95" -gt $(( LIM * 4 )) ]; then echo "::error title=Fluidez::p95 ${P95}ms (limite $(( LIM * 4 ))ms)"; exit 1; fi
+          # teclado unico: tem de abrir no campo, aceitar a tecla e devolver o texto ao fechar
+          TEC=$(cat teclado.txt 2>/dev/null | cut -c1-400)
+          echo "::notice title=Teclado::${TEC:-sem resposta}"
+          if ! echo "$TEC" | grep -q "abriu:"; then echo "::error title=Teclado::nao abriu no campo"; exit 1; fi
+          if ! echo "$TEC" | grep -q "campo recebeu: astro1"; then echo "::error title=Teclado::digitou ou fechou errado (esperado astro1)"; exit 1; fi
           # reproducao: cada linha precisa dizer que estava tocando
           LT=$(cat lista-total.txt 2>/dev/null || echo 0)
           echo "::notice title=Sua lista de canais::$LT canais na playlist · primeiro: $(head -c 120 lista-primeiro.txt 2>/dev/null)"
@@ -196,3 +204,5 @@ jobs:
             test.txt
             gfx.txt
             audio.txt
+            teclado.txt
+            reproducao.txt
