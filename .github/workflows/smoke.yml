@@ -103,6 +103,10 @@ jobs:
             adb shell pidof com.auroratv.tv > vivo.txt || echo "morto" > vivo.txt
             # referencia: as Configuracoes do Android, navegadas igual, no mesmo emulador.
             # O emulador desenha por software e e lento para tudo; so comparado da para julgar.
+            # Valida a lista de canais propria: baixa, conta os canais e testa o primeiro
+            curl -sL --max-time 40 "https://raw.githubusercontent.com/sergiobarbozajr/Playlist-canais/refs/heads/main/playlistcanais.m3u8" -o lista.m3u8 || true
+            grep -c "#EXTINF" lista.m3u8 > lista-total.txt 2>/dev/null || echo 0 > lista-total.txt
+            grep -m1 "^http" lista.m3u8 > lista-primeiro.txt 2>/dev/null || true
             # Teste de reproducao: tres enderecos de video seguidos, um por linha
             # (o executor deste passo nao aceita laco de varias linhas)
             adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv --es aurora_test "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" > /dev/null; sleep 32; L=$(adb logcat -d -s AuroraTest:I | grep -m1 "t=12 " | sed "s/.*AuroraTest: //" | cut -c1-140); echo "${L:-NAO TOCOU x36xhzz.m3u8}" >> reproducao.txt
@@ -150,6 +154,9 @@ jobs:
           if [ -n "$P50" ] && [ "$P50" -gt "$LIM" ]; then echo "::error title=Fluidez::mediana ${P50}ms (limite ${LIM}ms, referencia do sistema ${R50:-?}ms)"; exit 1; fi
           if [ -n "$P95" ] && [ "$P95" -gt $(( LIM * 4 )) ]; then echo "::error title=Fluidez::p95 ${P95}ms (limite $(( LIM * 4 ))ms)"; exit 1; fi
           # reproducao: cada linha precisa dizer que estava tocando
+          LT=$(cat lista-total.txt 2>/dev/null || echo 0)
+          echo "::notice title=Sua lista de canais::$LT canais na playlist · primeiro: $(head -c 120 lista-primeiro.txt 2>/dev/null)"
+          if [ "${LT:-0}" -lt 1 ]; then echo "::error title=Sua lista de canais::a playlist nao foi lida ou veio vazia"; exit 1; fi
           echo "::notice title=Reproducao bruta::$(wc -l < reproducao.txt 2>/dev/null || echo 0) linhas · $(tr '\n' '|' < reproducao.txt 2>/dev/null | cut -c1-800)"
           if [ -s reproducao.txt ]; then
             TOT=$(grep -c . reproducao.txt)

@@ -428,10 +428,105 @@ object Servico {
         }
     }
 
+    fun attr2(line: String, key: String): String = at(line, key)
+
     private fun at(line: String, key: String): String {
         val i = line.indexOf("$key=\"")
         if (i < 0) return ""
         val j = line.indexOf('"', i + key.length + 2)
         return if (j < 0) "" else line.substring(i + key.length + 2, j)
+    }
+}
+
+/**
+ * A sua lista de canais, publicada no seu próprio GitHub.
+ *
+ * Entra nativa, sem você precisar cadastrar nada: é baixada ao abrir o app, guardada no aparelho
+ * e reaproveitada por um dia. Sem internet, vale a cópia guardada.
+ */
+object Lista {
+    const val SRC = "https://raw.githubusercontent.com/sergiobarbozajr/Playlist-canais/refs/heads/main/playlistcanais.m3u8"
+
+    @Volatile
+    var itens: List<Aberto.Ch> = emptyList()
+        private set
+
+    @Volatile
+    var erro = ""
+        private set
+
+    @Volatile
+    private var fileiras: List<RowData> = emptyList()
+
+    private val main = Handler(Looper.getMainLooper())
+    private fun arquivo(c: Context) = File(c.cacheDir, "minha-lista.m3u8")
+
+    fun load(c: Context, force: Boolean = false, onDone: (Int) -> Unit = {}) {
+        if (itens.isNotEmpty() && !force) {
+            onDone(itens.size)
+            return
+        }
+        val app = c.applicationContext
+        thread(isDaemon = true) {
+            val f = arquivo(app)
+            val novo = f.exists() && System.currentTimeMillis() - f.lastModified() < 24 * 3600_000L
+            var corpo = if (novo && !force) try { f.readText() } catch (e: Throwable) { null } else null
+            if (corpo == null) {
+                corpo = try {
+                    val cx = (URL(SRC).openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 12000
+                        readTimeout = 25000
+                        instanceFollowRedirects = true
+                        setRequestProperty("User-Agent", "AstroLumeTV/1.0")
+                    }
+                    if (cx.responseCode !in 200..299) null else cx.inputStream.bufferedReader().use { it.readText() }
+                } catch (e: Throwable) {
+                    null
+                }
+                if (corpo != null) try { f.writeText(corpo) } catch (e: Throwable) {}
+                if (corpo == null && f.exists()) corpo = try { f.readText() } catch (e: Throwable) { null }
+            }
+            val out = ArrayList<Aberto.Ch>()
+            if (corpo != null) {
+                var nome = ""
+                var logo = ""
+                var grupo = ""
+                for (raw in corpo.lineSequence()) {
+                    val line = raw.trim()
+                    when {
+                        line.startsWith("#EXTINF") -> {
+                            val v = line.lastIndexOf(',')
+                            nome = if (v >= 0) line.substring(v + 1).trim() else ""
+                            logo = Servico.attr2(line, "tvg-logo")
+                            grupo = Servico.attr2(line, "group-title").ifBlank { "Meus canais" }
+                        }
+                        line.startsWith("#") || line.isEmpty() -> {}
+                        else -> {
+                            if (nome.isNotEmpty() && line.startsWith("http")) out.add(Aberto.Ch(nome, line, logo, grupo, "BR"))
+                            nome = ""
+                        }
+                    }
+                }
+            }
+            itens = out
+            fileiras = emptyList()
+            erro = if (out.isEmpty()) "não deu para baixar a sua lista de canais" else ""
+            main.post { onDone(out.size) }
+        }
+    }
+
+    fun rows(): List<RowData> {
+        fileiras.let { if (it.isNotEmpty()) return it }
+        if (itens.isEmpty()) return emptyList()
+        val r = itens.groupBy { it.group }.entries.sortedByDescending { it.value.size }.take(10).map { (g, v) ->
+            RowData(
+                "$g · sua lista",
+                v.take(80).mapIndexed { i, c ->
+                    Card(c.name, "Sua lista", "stream", Palette.pick(i).first, Palette.pick(i).second, c.url, "", emptyList(), "Fonte: sua lista de canais", c.logo)
+                },
+            )
+        }
+        fileiras = r
+        return r
     }
 }

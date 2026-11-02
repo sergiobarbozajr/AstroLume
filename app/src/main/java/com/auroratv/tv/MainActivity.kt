@@ -345,7 +345,7 @@ private val KEYS = listOf(
     listOf("A", "B", "C", "D", "E", "F", "G", "H", "I", "J"),
     listOf("K", "L", "M", "N", "O", "P", "Q", "R", "S", "T"),
     listOf("U", "V", "W", "X", "Y", "Z", "ESPAÇO", "APAGAR", "MIC"),
-    listOf("CANCELAR", "PRONTO")
+    listOf("CANCELAR", "APAGAR TUDO", "PRONTO")
 )
 
 private val TEST_COLORS = listOf(
@@ -594,6 +594,9 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
         Aberto.load(context) { bump++ }
     }
     LaunchedEffect(Unit) {
+        Lista.load(context) { bump++ }
+    }
+    LaunchedEffect(Unit) {
         val a = withContext(Dispatchers.Default) { Antena.cards(context) }
         if (a.isNotEmpty()) {
             antena = a
@@ -795,11 +798,13 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
             "Lançamentos" -> {
                 // o que entrou há menos tempo na lista do provedor, e o que é de ano mais recente
                 val todos = iptvRows.values.flatten().flatMap { it.cards }.filter { it.kind == "vod" || it.kind == "series" }
-                val novos = todos.filter { it.entrou > 0 }.sortedByDescending { it.entrou }.take(60)
-                val porAno = todos.filter { it.ano > 0 }.sortedByDescending { it.ano }.distinctBy { it.name }.take(60)
+                val anoAtual = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                // só o ano corrente: lançamento é o que saiu este ano, não o que entrou na lista
+                val doAno = todos.filter { it.ano == anoAtual }.distinctBy { it.name }.sortedBy { it.name.lowercase() }
+                val novos = todos.filter { it.entrou > 0 && it.ano == anoAtual }.sortedByDescending { it.entrou }.take(60)
                 val r = ArrayList<RowData>()
-                if (novos.isNotEmpty()) r.add(RowData("Chegou agora na sua lista", novos))
-                if (porAno.isNotEmpty()) r.add(RowData("Mais recentes por ano", porAno))
+                if (novos.isNotEmpty()) r.add(RowData("Chegou agora · $anoAtual", novos))
+                if (doAno.isNotEmpty()) r.add(RowData("Tudo de $anoAtual (A‑Z)", doAno.take(120)))
                 if (r.isEmpty()) withLogin(emptyList()) else r
             }
             "Vistos recentemente" -> {
@@ -821,13 +826,19 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
             )
             "Notícias" -> withLogin(iptv("Notícias") + RowData("Ao vivo", free.news))
             "TV ao vivo" -> listOf(RowData("Sua lista IPTV", listOf(loginCard()))) +
-                RowData("Antena digital da TV", antena) + iptv("TV ao vivo") + (servicoRows["TV ao vivo"] ?: emptyList()) + netRows + Aberto.liveRows() +
+                RowData("Antena digital da TV", antena) + Lista.rows() + iptv("TV ao vivo") + (servicoRows["TV ao vivo"] ?: emptyList()) + netRows + Aberto.liveRows() +
                 RowData("Abertos pela internet", free.internet) + openRows + RowData("Internacionais", free.intl)
             else -> emptyList()
         }
         // o que não reproduziu nesta sessão sai das listas até a próxima vez que você abrir o app
-        return out.map { r -> if (pb.falhou.isEmpty()) r else RowData(r.title, r.cards.filter { pb.falhou[it.name] != true }) }
-            .filter { it.cards.isNotEmpty() }
+        // mídias ficam em ordem alfabética; canais ao vivo mantêm a ordem do provedor (número do canal)
+        val azSec = name in setOf("Filmes", "Séries", "Novelas", "Documentários", "Infantil", "Adulto")
+        return out.map { r ->
+            var cs = r.cards
+            if (pb.falhou.isNotEmpty()) cs = cs.filter { pb.falhou[it.name] != true }
+            if (azSec && cs.size > 1) cs = cs.sortedBy { it.name.lowercase() }
+            RowData(r.title, cs)
+        }.filter { it.cards.isNotEmpty() }
     }
 
     val rows = remember(nav, iptvVersion, favs.size, histVersion, m3uExtra, iptvSaved, iptvTotal, allCards, newsRows, searchRows, hideOff, bump, pb.falhou.size) { rowsFor(nav) }
@@ -1307,6 +1318,7 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
         when (k) {
             "ESPAÇO" -> query += " "
             "APAGAR" -> query = query.dropLast(1)
+            "APAGAR TUDO" -> query = ""
             "CANCELAR" -> {
                 kbd = false
                 kr = 0
@@ -1833,7 +1845,23 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                 when (a) {
                     "back" -> confirmar = ""
                     "ok" -> {
-                        if (confirmar == "remover") disconnect() else limparCredenciais()
+                        when (confirmar) {
+                            "remover" -> disconnect()
+                            "credenciais" -> limparCredenciais()
+                            "rede" -> {
+                                for (k in 0 until Store.SLOTS) Store.setNet(k, "")
+                                netRows = emptyList()
+                                bump++
+                                showToast("Todos os endereços de rede foram apagados.")
+                            }
+                            else -> {
+                                for (k in 0 until Store.SLOTS) Store.setSite(k, "", "")
+                                servicoRows = emptyMap()
+                                servicoNome = ""
+                                bump++
+                                showToast("Todos os serviços abertos foram apagados.")
+                            }
+                        }
                         confirmar = ""
                     }
                 }
@@ -1876,7 +1904,7 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                     }
                     "ok" -> when (iptvTab) {
                         0 -> when (loginField) {
-                            0 -> {}
+                            0 -> confirmar = "credenciais"
                             1 -> loadSlot((iptvSlot + 1) % S)
                             2 -> askText("Endereço (URL)", fUrl, false) { fUrl = it.trim() }
                             3 -> askText("Usuário", fUser, false) { fUser = it.trim() }
@@ -1887,7 +1915,7 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                             else -> confirmar = "credenciais"
                         }
                         1 -> when (loginField) {
-                            0 -> {}
+                            0 -> confirmar = "rede"
                             1 -> iptvSlot = (iptvSlot + 1) % S
                             else -> askText("Endereço da transmissão ou lista (.m3u)", Store.net(iptvSlot).ifBlank { "http://" }, false) { t ->
                                 val u = t.trim()
@@ -1899,7 +1927,7 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                             }
                         }
                         else -> when (loginField) {
-                            0 -> {}
+                            0 -> confirmar = "sites"
                             1 -> iptvSlot = (iptvSlot + 1) % S
                             else -> askText("Endereço do serviço aberto", Store.site(iptvSlot).second.ifBlank { "https://" }, false) { t ->
                                 val u = WebActivity.fix(t)
@@ -2639,7 +2667,7 @@ private fun IptvBox(
                         acao("Apagar as credenciais dos 3 acessos", 8, true)
                     }
                     Text(
-                        "Sua conta licenciada. Os canais entram na TV ao vivo, e filmes e séries nas suas abas. " +
+                        "OK na linha das abas apaga todas as contas deste tipo. Os canais entram na TV ao vivo, e filmes e séries nas suas abas. " +
                             "Limpar o cache não apaga conta nem favoritos; apagar credenciais não apaga favoritos nem histórico.",
                         color = CDim, fontSize = ts(12),
                     )
@@ -2681,13 +2709,22 @@ private fun ConfirmBox(oque: String) {
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                if (oque == "remover") "Remover esta conta?" else "Apagar as credenciais dos 3 acessos?",
+                when (oque) {
+                    "remover" -> "Remover esta conta?"
+                    "rede" -> "Apagar todas as transmissões de rede?"
+                    "sites" -> "Apagar todos os serviços abertos?"
+                    else -> "Apagar todas as contas IPTV?"
+                },
                 color = CInk, fontSize = ts(24), fontWeight = FontWeight.ExtraBold,
             )
             Spacer(Modifier.height(u(10)))
             Text(
-                if (oque == "remover") "O endereço, o usuário e a senha deste acesso saem do aparelho. Favoritos e histórico continuam."
-                else "Os três acessos ficam vazios. Favoritos, histórico e o ponto onde você parou continuam.",
+                when (oque) {
+                    "remover" -> "O endereço, o usuário e a senha deste acesso saem do aparelho. Favoritos e histórico continuam."
+                    "rede" -> "Os três endereços de transmissão de rede ficam vazios."
+                    "sites" -> "Os três endereços de serviço aberto ficam vazios."
+                    else -> "Os três acessos de IPTV ficam vazios. Favoritos, histórico e o ponto onde você parou continuam."
+                },
                 color = CDim, fontSize = ts(15), textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(u(18)))
