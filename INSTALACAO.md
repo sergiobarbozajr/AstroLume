@@ -2,10 +2,12 @@
 
 ## 1. Baixar o APK
 
-Na página do repositório, aba **Releases**. Cada versão publicada traz:
+Na página do repositório, aba **Releases**. Cada versão sai em duas publicações:
 
-- `app-tv-release.apk` — para a TV
-- `app-celular-release.apk` — para o celular
+| Publicação | Arquivo | Para |
+| --- | --- | --- |
+| `v0.42` | `AstroLumeTV.apk` | a TV |
+| `celular-v0.42` | `AstroLume-celular.apk` | o celular |
 
 Se a aba estiver vazia, é porque o último teste no emulador reprovou: a publicação só acontece
 depois que ele passa.
@@ -19,7 +21,7 @@ você vai usar para receber o arquivo (`Send files to TV` ou `Downloader`).
 
 **Opção A — Send files to TV** (o caminho mais simples)
 1. Instale o `Send files to TV` na TV e no celular.
-2. Ponha o APK no celular, abra o app, toque em **Send** e escolha a TV.
+2. Ponha o `AstroLumeTV.apk` no celular, abra o app, toque em **Send** e escolha a TV.
 3. Na TV, abra o arquivo recebido e confirme.
 
 **Opção B — Downloader (AFTVnews)**
@@ -34,7 +36,7 @@ você vai usar para receber o arquivo (`Send files to TV` ou `Downloader`).
    ```bash
    adb pair  IP:PORTA_DE_PAREAMENTO   # código mostrado na TV
    adb connect IP:5555
-   adb install -r app-tv-release.apk
+   adb install -r AstroLumeTV.apk
    ```
 
 ## 4. Atualizar
