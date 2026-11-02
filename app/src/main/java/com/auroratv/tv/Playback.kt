@@ -25,8 +25,6 @@ import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
-import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
-import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import org.json.JSONObject
@@ -156,23 +154,6 @@ class Playback(private val context: Context) {
     // então o leitor aceita quadros não-chave e detecta as unidades de acesso por conta própria
     private val tsFlags = DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
     private val extractors = DefaultExtractorsFactory().setTsExtractorFlags(tsFlags).setConstantBitrateSeekingEnabled(true)
-
-    /**
-     * Quando o player, por conta própria, tenta de novo.
-     *
-     * O ExoPlayer, por padrão, refaz o pedido sozinho em 0, 1 e 2 segundos quando o servidor
-     * falha. Era isso que ainda batia no servidor logo depois do clique, antes da nossa espera de
-     * 30 s. Agora, enquanto o canal está abrindo, ele não tenta sozinho: a falha vem direto para
-     * a nossa espera, e a primeira nova tentativa só sai depois de 30 s.
-     *
-     * Depois que o vídeo já começou, um pedaço que falhou continua sendo buscado de novo na hora,
-     * como antes: esperar 30 s por um pedaço de 2 s esvaziaria o buffer e travaria o vídeo, e essa
-     * busca não aparece para quem está assistindo.
-     */
-    private val politicaDeErro = object : DefaultLoadErrorHandlingPolicy() {
-        override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long =
-            if (!everReady) C.TIME_UNSET else super.getRetryDelayMsFor(info)
-    }
 
     private val listener = object : Player.Listener {
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -480,10 +461,9 @@ class Playback(private val context: Context) {
                 low.contains(".m3u8") -> HlsMediaSource.Factory(ds)
                     .setExtractorFactory(DefaultHlsExtractorFactory(tsFlags, true))
                     .setAllowChunklessPreparation(true)
-                    .setLoadErrorHandlingPolicy(politicaDeErro)
                     .createMediaSource(item)
-                low.contains(".mpd") -> DashMediaSource.Factory(ds).setLoadErrorHandlingPolicy(politicaDeErro).createMediaSource(item)
-                else -> ProgressiveMediaSource.Factory(ds, extractors).setLoadErrorHandlingPolicy(politicaDeErro).createMediaSource(item)
+                low.contains(".mpd") -> DashMediaSource.Factory(ds).createMediaSource(item)
+                else -> ProgressiveMediaSource.Factory(ds, extractors).createMediaSource(item)
             }
             if (card?.kind != "stream" && resumeAt > 0L) player.setMediaSource(src, resumeAt) else player.setMediaSource(src)
             player.prepare()
@@ -605,8 +585,11 @@ class Playback(private val context: Context) {
                 }
             }
             code in 7000..7999 -> {
-                // a TV não aguentou o processamento de imagem: desliga o reforço neste vídeo e toca sem ele
+                // A TV não aguentou o processamento de imagem. Como na 0.16: volta para o automático
+                // (vídeo direto para a TV) e guarda, para não falhar de novo no próximo vídeo.
                 gpuOff = true
+                aiMode = 1
+                Store.enhance = 1
                 aiKey = ""
                 onEnhanceFailed?.invoke()
                 main.post {

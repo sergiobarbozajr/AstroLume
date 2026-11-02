@@ -11,8 +11,8 @@ android {
         applicationId = "com.auroratv.tv"
         minSdk = 24
         targetSdk = 34
-        versionCode = 46
-        versionName = "0.46"
+        versionCode = 47
+        versionName = "0.47"
     }
 
     signingConfigs {

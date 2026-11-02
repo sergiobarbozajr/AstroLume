@@ -68,19 +68,13 @@ object ImageAi {
             if (gpuOff) return Plan("off", emptyList(), "Realce pausado para manter a fluidez")
             return Plan("man$mode", enhanceEffects(mode - 1), "Realce manual")
         }
+        // Automático: o vídeo vai direto para o hardware da TV, sem processamento nenhum na GPU.
+        // É a correção da 0.16, que resolveu o problema na TCL: o processador de quadros da GPU
+        // (o "reforço") é o que falhava e fazia a imagem piscar. Quem melhora a imagem aqui é o
+        // próprio chip da TV — na TCL, a super-resolução neural da Realtek —, que não passa pela GPU.
+        // O reforço na GPU continua existindo só nos modos manuais, para quem escolher.
         if (h <= 0) return Plan("wait", emptyList(), if (hwAi) "IA da TV" else "")
-        val src = "${h}p"
-        if (gpuOff) return Plan("off", emptyList(), if (hwAi) "IA da TV · 4K (reforço pausado)" else "Reforço pausado para manter a fluidez")
-        return if (hwAi) {
-            if (h >= 900 || w >= 1600) Plan("pass", emptyList(), "IA da TV · super-resolução 4K")
-            else Plan("up1080", listOf(AiSharpen(1080, 0.55f, 0.5f)), "Reforço $src→1080p + IA da TV 4K")
-        } else {
-            when {
-                h < 900 && w < 1600 -> Plan("up1080", listOf(AiSharpen(1080, 0.6f, 0.5f)), "IA · $src→1080p com nitidez")
-                h <= 1100 -> Plan("sharp", listOf(AiSharpen(0, 0.4f, 0.4f)), "IA · nitidez 1080p")
-                else -> Plan("pass", emptyList(), "4K original")
-            }
-        }
+        return Plan("pass", emptyList(), if (hwAi) "IA da TV · super-resolução" else "Imagem original")
     }
 }
 

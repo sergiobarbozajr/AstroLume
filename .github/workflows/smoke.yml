@@ -82,7 +82,7 @@ jobs:
             adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv --es aurora_teclado "astro" > /dev/null; sleep 14; adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 1; adb shell input keyevent KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN; sleep 1; adb shell input keyevent KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT; sleep 1; adb shell input keyevent KEYCODE_DPAD_CENTER; sleep 3; adb logcat -d -s AuroraTeclado:I | sed "s/.*AuroraTeclado: //" | tr "\n" "|" > teclado.txt || true
             # Tentativas: um endereco que falha. A primeira nova tentativa so pode sair depois de 30 s.
             # O app abre o endereco ~10 s apos iniciar: aos 32 s tem de haver 1 abertura, aos 50 s, 2.
-            adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv --es aurora_rede "http://127.0.0.1:9/nada.m3u8" > /dev/null; sleep 32; adb logcat -d -s AuroraRede:I | grep -c "abrindo" > rede-antes.txt || true; sleep 18; adb logcat -d -s AuroraRede:I | grep -c "abrindo" > rede-depois.txt || true; adb logcat -d -s AuroraRede:I | sed "s/.*AuroraRede: //" | tr "\n" "|" > rede.txt || true
+            adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv --es aurora_rede "http://127.0.0.1:9/nada.m3u8" > /dev/null; sleep 32; adb logcat -d -s AuroraRede:I | grep -c "abrindo" > rede-antes.txt || true; sleep 26; adb logcat -d -s AuroraRede:I | grep -c "abrindo" > rede-depois.txt || true; adb logcat -d -s AuroraRede:I | sed "s/.*AuroraRede: //" | tr "\n" "|" > rede.txt || true
             # Modo seta: F2 liga, as setas movem a seta e ela tem de cair em cima de algum alvo.
             adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv > /dev/null; sleep 16; adb shell input keyevent KEYCODE_F2; sleep 2; adb shell input keyevent KEYCODE_DPAD_RIGHT KEYCODE_DPAD_RIGHT KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN; sleep 2; adb shell input keyevent KEYCODE_DPAD_DOWN KEYCODE_DPAD_DOWN KEYCODE_DPAD_RIGHT; sleep 3; adb logcat -d -s AuroraSeta:I | sed "s/.*AuroraSeta: //" | tr "\n" "|" > seta.txt || true
             # volta para a versao de producao: a fluidez tem de ser medida no que vai ser publicado
@@ -174,11 +174,11 @@ jobs:
           RF=$(cat refeito.txt 2>/dev/null | tr -dc "0-9"); RF=${RF:-0}
           echo "::notice title=Piscada::player refeito $RF vez(es) em 1 minuto tocando"
           if [ "$RF" -gt 1 ]; then echo "::error title=Piscada::o player foi refeito $RF vezes durante a reproducao (cada vez apaga a tela)"; exit 1; fi
-          # melhoria de imagem: tem de estar aplicada no video de teste (480p) e nunca pausada
+          # imagem no automatico: direto para o hardware da TV, sem processamento na GPU (correcao da 0.16)
           IA=$(grep -oE "ia=[^|]{0,40}" test.txt 2>/dev/null | sort | uniq -c | tr '\n' ' ' | cut -c1-300)
           echo "::notice title=Melhoria de imagem::${IA:-sem leitura}"
-          if grep -q "pausad" test.txt; then echo "::error title=Melhoria de imagem::a melhoria foi pausada durante a reproducao"; exit 1; fi
-          if ! grep -q "1080p" test.txt; then echo "::error title=Melhoria de imagem::o video de 480p nao recebeu a melhoria para 1080p"; exit 1; fi
+          if grep -qE "1080p|Reforço|pausad" test.txt; then echo "::error title=Imagem::o automatico passou o video pela GPU (era isso que piscava)"; exit 1; fi
+          if ! grep -qE "ia=(IA da TV|Imagem original)" test.txt; then echo "::error title=Imagem::o video nao foi direto para a TV"; exit 1; fi
           # tentativas: nenhuma antes de 30 s, e a primeira tem de sair depois deles
           RA=$(cat rede-antes.txt 2>/dev/null | tr -dc "0-9"); RD=$(cat rede-depois.txt 2>/dev/null | tr -dc "0-9")
           echo "::notice title=Tentativas::~20 s apos abrir: ${RA:-?} abertura(s) · ~40 s apos abrir: ${RD:-?} · $(cut -c1-200 rede.txt 2>/dev/null)"

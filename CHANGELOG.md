@@ -2,7 +2,19 @@
 
 Feito a partir dos commits do `main`. Versão = `versionName` do `app/build.gradle.kts`.
 
-## 0.46 — em teste
+## 0.47 — em teste
+
+- **De volta à correção da 0.16, que funcionou na TCL.** No Automático o vídeo vai direto para
+  o hardware da TV, sem nenhum processamento na GPU. Quem melhora a imagem é o próprio chip da
+  TV (na TCL, a super-resolução neural da Realtek). O "reforço" na GPU — que a 0.46 deixava
+  sempre ligado — é o que falhava e fazia a imagem piscar.
+- O reforço na GPU fica só nos modos manuais. Se a TV falhar com ele, o app volta para o
+  Automático **e guarda**, como na 0.16, para não falhar de novo no próximo vídeo.
+- A recuperação interna do player (refazer um pedido que falhou em 0, 1 e 2 s, dentro da mesma
+  tentativa) voltou a ser a padrão, como era quando funcionava.
+- **Mantido: 30 s entre uma tentativa e a próxima**, inclusive a primeira.
+
+## 0.46
 
 - **Melhoria de imagem mantida do começo ao fim.** Ao perder quadros, o app desligava o reforço
   de imagem e refazia o player: a tela apagava e a imagem caía de qualidade no meio do filme.

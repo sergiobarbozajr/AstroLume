@@ -571,7 +571,8 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
     }
     DisposableEffect(pb) {
         pb.onEnhanceFailed = {
-            toastMsg = "A TV ficou sem fôlego com o reforço de imagem neste vídeo. Segui só com a IA da própria TV, sem travar."
+            enhance = 1
+            toastMsg = "A TV não aguentou o realce manual. Voltei para o Automático: imagem direto pela IA da própria TV."
         }
         pb.onAuthExpired = {
             val now = System.currentTimeMillis()
@@ -2813,7 +2814,7 @@ private fun settingBody(
                 "Saída atual da tela: ${dm.widthPixels} x ${dm.heightPixels}" + nl + nl +
                 "Fora do AstroLume TV (Netflix, YouTube etc.) o Android é quem decide. Para travar no máximo: Ajustes do Google TV > Tela e som > Resolução 4K 60 Hz, HDR ligado e “Ajustar à taxa do conteúdo” desligado."
         }
-        "Assistente IA de imagem" -> tip + nl + nl + "Automático (recomendado): o vídeo bom (1080p, 4K, HDR) vai direto para a super-resolução por IA do próprio chip da TV, que leva a imagem a 4K. Vídeo fraco (até 720p) recebe antes um reforço na GPU: reconstrução para 1080p, nitidez adaptativa e tom suave. Se a TV começar a perder quadros, o reforço desliga sozinho e o vídeo segue fluido." + nl + nl + ImageAi.summary() + nl + nl + "Manual: Médio, Alto e Ultra aumentam cor, contraste e brilho em vídeo comum (SDR). HDR passa sempre intacto." + nl + nl + "Durante o filme, o selo IA no painel mostra o que está atuando."
+        "Assistente IA de imagem" -> tip + nl + nl + "Automático (recomendado): todo vídeo vai direto para o hardware da TV, sem passar pela GPU. Quem melhora a imagem é o próprio chip — na TCL, a super-resolução neural da Realtek. É o modo que não pisca nem trava." + nl + nl + ImageAi.summary() + nl + nl + "Manual: Médio, Alto e Ultra aumentam cor, contraste e brilho em vídeo comum (SDR). HDR passa sempre intacto." + nl + nl + "Durante o filme, o selo IA no painel mostra o que está atuando."
         "Clima e cidade" -> tip + nl + nl + "Agora em $city: " + weather
         "Som do aplicativo" -> "OK abre o editor de som:" + nl + "• Som das teclas: 6 estilos ou desligado" + nl + "• Voz: agudo, grave e acústico" + nl + "• Som de ambiente: agudo, grave e acústico" + nl + "• Volume da voz separado do volume do ambiente" + nl + nl + "Vale para canais, filmes e séries. A voz é separada pela faixa de frequência dos diálogos." + nl + nl + "Música de fundo do app: tema espacial original de órgão, piano e violino, com o tique de relógio ao fundo, no clima de Interestelar. Volume próprio, independente da TV. Pausa sozinha quando um vídeo começa e volta quando você sai do player."
         "Sons das teclas" -> tip + nl + nl + "Um toque curto e baixo a cada botão do controle, como o teclado de um celular. Não toca durante os vídeos."
