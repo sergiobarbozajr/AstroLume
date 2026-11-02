@@ -105,13 +105,20 @@ class Playback(private val context: Context) {
     private var swappedFormat = false
     private var bufferingSec = 0
     private var everReady = false
-    private val delays = longArrayOf(1000, 2000, 4000, 8000, 15000, 30000)
+    // as primeiras tentativas dão tempo ao servidor em vez de atropelá-lo
+    private val delays = longArrayOf(3000, 6000, 12000, 20000, 30000, 30000)
     private var limitMode = false
     private var limitTries = 0
     private val triedExt = HashSet<String>()
 
     /** Tempo máximo esperando o vídeo começar antes de chamar de "sem sinal". */
-    val patienceSec = 25
+    /**
+     * Quanto tempo esperar o vídeo chegar antes de tentar de novo.
+     * Na primeira vez a espera é maior: servidor de IPTV costuma demorar para liberar o canal,
+     * e reconectar cedo só faz ele começar tudo de novo e demorar mais.
+     */
+    val patienceSec = 30
+    private val patienceDepois = 20
 
     /** Chamado quando a TV não aguenta o realce de imagem: o app desliga o realce e segue tocando. */
     var onEnhanceFailed: (() -> Unit)? = null
@@ -130,8 +137,8 @@ class Playback(private val context: Context) {
             } catch (e: Throwable) {
             }
         }
-        .connectTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
+        .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .followRedirects(true)
         .followSslRedirects(true)
@@ -312,11 +319,12 @@ class Playback(private val context: Context) {
             val c = card
             if (c != null && player.playWhenReady && player.playbackState == Player.STATE_BUFFERING) {
                 bufferingSec++
-                if (bufferingSec == patienceSec) {
+                val limite = if (everReady) patienceDepois else patienceSec
+                if (bufferingSec == limite) {
                     if (everReady && c.kind == "stream") mark(c.name, 2)
                     diag = Diag(
                         "Carregando devagar", "Rede · buffer",
-                        "o vídeo não chegou em $patienceSec s (conexão lenta ou servidor ocupado)",
+                        "o vídeo não chegou em $limite s (conexão lenta ou servidor ocupado)",
                         "reconectando…"
                     )
                     retryLater()
