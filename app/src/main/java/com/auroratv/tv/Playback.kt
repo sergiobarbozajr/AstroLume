@@ -235,8 +235,18 @@ class Playback(private val context: Context) {
         current = this
     }
 
+    /**
+     * Quando o player foi refeito pela última vez. Refazer o player apaga a tela por um instante,
+     * então duas vezes seguidas aparecem como piscada: isto serve para espaçar.
+     */
+    private var refeitoEm = 0L
+
     /** Troca o player por um novo, sem efeitos de vídeo, e retoma o que estava tocando. */
     private fun rebuild() {
+        refeitoEm = android.os.SystemClock.uptimeMillis()
+        // marca no log: refazer o player apaga a tela, então duas destas perto uma da outra
+        // são exatamente a piscada que o usuário vê. O teste no emulador conta estas linhas.
+        android.util.Log.i("AuroraAI", "player refeito")
         val old = player
         val pos = old.currentPosition
         val vod = card?.kind != "stream"
@@ -269,8 +279,23 @@ class Playback(private val context: Context) {
      * Assistente IA de imagem (modo 0 desligado, 1 automático, 2..4 manual).
      * Sem efeito nenhum = o vídeo vai direto para o hardware da TV (super-resolução e AI-PQ do chip).
      */
-    fun setAi(mode: Int) {
+    /**
+     * @param porTamanho true quando a chamada veio de mudança de resolução do vídeo, não do usuário.
+     *
+     * Era aqui que estava a piscada no meio do filme. Numa lista adaptativa (HLS com várias
+     * qualidades), a TV troca de faixa várias vezes por minuto e avisa cada troca; a cada aviso o
+     * plano de imagem era recalculado, e sair de "reforço para 1080p" para "direto" refaz o player
+     * inteiro — tela preta, stream recarregado. Com o vídeo oscilando entre 480p e 1080p, isso
+     * acontecia sem parar.
+     *
+     * Agora o plano é escolhido **uma vez por título**, na primeira vez que a resolução é conhecida.
+     * Mudança de faixa depois disso não mexe mais nele. Trocar a opção no menu continua valendo
+     * na hora, porque aí o usuário pediu e espera a imagem recarregar.
+     */
+    fun setAi(mode: Int, porTamanho: Boolean = false) {
         aiMode = mode
+        // "" = título novo, ainda sem plano; "wait" = plano provisório de antes de a resolução chegar
+        if (porTamanho && aiKey.isNotEmpty() && aiKey != "wait") return
         val plan = ImageAi.plan(mode, player.videoFormat, isHdrFormat(player), gpuOff)
         aiLabel = plan.label
         if (plan.key == aiKey && (plan.effects.isEmpty() == !effectsOn)) return
@@ -301,7 +326,10 @@ class Playback(private val context: Context) {
         dropIdx = (dropIdx + 1) % dropHist.size
         droppedLast10s = if (old in 1..now) now - old else 0L
         // com o reforço ligado, a TV começou a engasgar: desliga só o reforço e segue tocando
-        if (effectsOn && player.isPlaying && droppedLast10s > 24) {
+        // refazer o player apaga a tela: no máximo uma vez a cada 20 s, para não virar piscada
+        if (effectsOn && player.isPlaying && droppedLast10s > 24 &&
+            android.os.SystemClock.uptimeMillis() - refeitoEm > 20_000L
+        ) {
             android.util.Log.i("AuroraAI", "fluidez: $droppedLast10s quadros perdidos em 10 s, reforço desligado")
             gpuOff = true
             aiKey = ""

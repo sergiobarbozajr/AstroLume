@@ -724,7 +724,8 @@ private fun MobilePlayer(pb: Playback, card: Card, onClose: () -> Unit, onZap: (
     DisposableEffect(player) {
         val l = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                pb.setAi(Store.enhance)
+                // mesma correcao da TV: troca de faixa de qualidade nao refaz o plano de imagem
+                pb.setAi(Store.enhance, porTamanho = true)
             }
         }
         player.addListener(l)

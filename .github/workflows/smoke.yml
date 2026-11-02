@@ -70,6 +70,8 @@ jobs:
             adb shell dumpsys audio | grep -iE "AudioPlaybackConfiguration|state:started|usage=USAGE_MEDIA" | head -8 > audio.txt || true
             sleep 42
             adb logcat -d -s AuroraTest:I AuroraAI:I AuroraImg:I > test.txt || true
+            # Piscada: refazer o player apaga a tela. Num minuto tocando o normal e zero vez.
+            adb logcat -d -s AuroraAI:I | grep -c "player refeito" > refeito.txt || echo 0 > refeito.txt
             # Teste de reproducao: tres enderecos de video seguidos, um por linha
             # (o executor deste passo nao aceita laco de varias linhas)
             adb shell am force-stop com.auroratv.tv; adb logcat -c; adb shell am start -n com.auroratv.tv/.MainActivity --es aurora_ui tv --es aurora_test "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" > /dev/null; sleep 44; L=$(adb logcat -d -s AuroraTest:I | grep -m1 "playing=true" | sed "s/.*AuroraTest: //" | cut -c1-140); echo "${L:-NAO TOCOU x36xhzz.m3u8}" >> reproducao.txt
@@ -163,6 +165,10 @@ jobs:
           if [ -n "$R50" ] && [ -n "$RF" ] && [ "$RF" -ge 20 ]; then LIM=$(( R50 * 5 / 2 )); [ "$LIM" -lt 34 ] && LIM=34; fi
           if [ -n "$P50" ] && [ "$P50" -gt "$LIM" ]; then echo "::error title=Fluidez::mediana ${P50}ms (limite ${LIM}ms, referencia do sistema ${R50:-?}ms)"; exit 1; fi
           if [ -n "$P95" ] && [ "$P95" -gt $(( LIM * 4 )) ]; then echo "::error title=Fluidez::p95 ${P95}ms (limite $(( LIM * 4 ))ms)"; exit 1; fi
+          # piscada na reproducao: o player nao pode ser refeito durante o filme
+          RF=$(cat refeito.txt 2>/dev/null | tr -dc "0-9"); RF=${RF:-0}
+          echo "::notice title=Piscada::player refeito $RF vez(es) em 1 minuto tocando"
+          if [ "$RF" -gt 1 ]; then echo "::error title=Piscada::o player foi refeito $RF vezes durante a reproducao (cada vez apaga a tela)"; exit 1; fi
           # teclado unico: tem de abrir no campo, aceitar a tecla e devolver o texto ao fechar
           TEC=$(cat teclado.txt 2>/dev/null | cut -c1-400)
           echo "::notice title=Teclado::${TEC:-sem resposta}"
@@ -205,4 +211,5 @@ jobs:
             gfx.txt
             audio.txt
             teclado.txt
+            refeito.txt
             reproducao.txt

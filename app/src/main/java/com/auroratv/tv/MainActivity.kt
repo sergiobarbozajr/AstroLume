@@ -547,7 +547,8 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
     DisposableEffect(player) {
         val l = object : Player.Listener {
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-                pb.setAi(enhance)
+                // mudança de faixa de qualidade não refaz o plano de imagem: era isso que piscava
+                pb.setAi(enhance, porTamanho = true)
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -3100,7 +3101,20 @@ private fun PlayerScreen(
                 )
             }
         }
-        val d = pb.diag
+        // A tela de SEM SINAL cobre a tela inteira de preto. Uma falha de meio segundo, dessas que
+        // o player resolve sozinho, pintava tudo de preto e voltava — na prática, uma piscada.
+        // Agora ela só aparece se o problema durar mais de 1,5 s; sumir continua imediato.
+        val dAgora = pb.diag
+        var dVisivel by remember { mutableStateOf<Diag?>(null) }
+        LaunchedEffect(dAgora) {
+            if (dAgora == null) {
+                dVisivel = null
+            } else {
+                delay(1500)
+                dVisivel = dAgora
+            }
+        }
+        val d = dVisivel
         if (d != null) {
             Box(Modifier.fillMaxSize().background(Color(0xFF05070C)), contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(u(820))) {
