@@ -41,6 +41,22 @@ class WebActivity : Activity() {
     private var fullView: View? = null
     private var fullCb: WebChromeClient.CustomViewCallback? = null
 
+    private var detectar = false
+    private val achados = ArrayList<String>()
+
+    /** Endereços que têm cara de ser dados, e não imagem, fonte ou código da página. */
+    private fun interessa(u: String): Boolean {
+        if (u.length < 12 || !u.startsWith("http")) return false
+        val l = u.lowercase().substringBefore('?')
+        if (l.endsWith(".js") || l.endsWith(".css") || l.endsWith(".png") || l.endsWith(".jpg") ||
+            l.endsWith(".jpeg") || l.endsWith(".webp") || l.endsWith(".svg") || l.endsWith(".ico") ||
+            l.endsWith(".woff") || l.endsWith(".woff2") || l.endsWith(".ttf") || l.endsWith(".html")
+        ) return false
+        return l.endsWith(".json") || l.contains("/api/") || l.endsWith(".m3u") || l.endsWith(".m3u8") ||
+            l.contains("catalog") || l.contains("catalogo") || l.contains("playlist") ||
+            l.contains("canais") || l.contains("filmes") || l.contains("series")
+    }
+
     /** modo seta ligado (a maioria dos sites precisa de clique) */
     private var cursor = true
     private var cx = 0f
@@ -53,6 +69,7 @@ class WebActivity : Activity() {
     override fun onCreate(b: Bundle?) {
         super.onCreate(b)
         val url = intent.getStringExtra("url").orEmpty().ifBlank { "https://www.google.com" }
+        detectar = intent.getBooleanExtra("detectar", false)
         root = FrameLayout(this)
         root.setBackgroundColor(AColor.BLACK)
 
@@ -76,6 +93,19 @@ class WebActivity : Activity() {
         web.webViewClient = object : WebViewClient() {
             override fun onPageFinished(v: WebView?, u: String?) {
                 bar.visibility = View.GONE
+            }
+
+            /**
+             * Modo detectar: anota tudo o que a página baixa. O site é um programa que vai buscar
+             * o catálogo em algum lugar; aqui a gente descobre **onde**, uma vez só. Depois o app
+             * passa a ler aquele endereço direto, sem precisar abrir o site de novo.
+             */
+            override fun shouldInterceptRequest(v: WebView?, req: android.webkit.WebResourceRequest?): android.webkit.WebResourceResponse? {
+                if (detectar) {
+                    val u = req?.url?.toString().orEmpty()
+                    if (interessa(u)) synchronized(achados) { if (achados.size < 60 && !achados.contains(u)) achados.add(u) }
+                }
+                return null
             }
         }
         web.webChromeClient = object : WebChromeClient() {
@@ -119,7 +149,7 @@ class WebActivity : Activity() {
         hint.setBackgroundColor(0xCC000000.toInt())
         hint.setPadding(dp(14), dp(8), dp(14), dp(8))
         hint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-        hint.text = "Setas movem a seta · OK clica · Menu troca para navegação por foco · Voltar sai"
+        hint.text = if (detectar) "Detectando de onde o site busca os dados… espere carregar e aperte MENU para ver a lista" else "Setas movem a seta · OK clica · Menu troca para navegação por foco · Voltar sai"
         root.addView(hint, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL))
         hint.postDelayed({ hint.visibility = View.GONE }, 6000)
 
@@ -181,6 +211,10 @@ class WebActivity : Activity() {
         }
         when (code) {
             KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_BUTTON_Y, KeyEvent.KEYCODE_PROG_YELLOW -> {
+                if (detectar) {
+                    mostrarAchados()
+                    return true
+                }
                 cursor = !cursor
                 place()
                 toast(if (cursor) "Modo seta: as setas movem a seta e OK clica" else "Modo foco: as setas pulam entre os botões do site")
@@ -250,7 +284,32 @@ class WebActivity : Activity() {
         super.onDestroy()
     }
 
+    /** Mostra o que a página buscou, para você escolher qual é o catálogo. */
+    private fun mostrarAchados() {
+        val lista = synchronized(achados) { achados.toList() }
+        if (lista.isEmpty()) {
+            toast("Nada com cara de catálogo até agora. Deixe a página carregar mais e tente de novo.")
+            return
+        }
+        try {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("De onde o site busca os dados (" + lista.size + ")")
+                .setItems(lista.map { it.take(90) }.toTypedArray()) { _, i ->
+                    ultimoAchado = lista[i]
+                    setResult(RESULT_OK, Intent().putExtra("fonte", lista[i]))
+                    finish()
+                }
+                .setNegativeButton("Fechar", null)
+                .show()
+        } catch (e: Throwable) {
+        }
+    }
+
     companion object {
+        /** O endereço de dados escolhido no modo detectar, para o app ler nativo depois. */
+        @Volatile
+        var ultimoAchado = ""
+
         /** Completa o endereço quando a pessoa digita só "site.com". */
         fun fix(u: String): String {
             val t = u.trim()
@@ -261,6 +320,15 @@ class WebActivity : Activity() {
         fun open(c: Context, url: String) {
             try {
                 c.startActivity(Intent(c, WebActivity::class.java).putExtra("url", fix(url)))
+            } catch (e: Throwable) {
+            }
+        }
+
+        /** Abre o site só para descobrir de onde ele busca o catálogo. */
+        fun detectar(c: Context, url: String) {
+            try {
+                ultimoAchado = ""
+                c.startActivity(Intent(c, WebActivity::class.java).putExtra("url", fix(url)).putExtra("detectar", true))
             } catch (e: Throwable) {
             }
         }

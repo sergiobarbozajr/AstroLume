@@ -596,6 +596,16 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
     LaunchedEffect(Unit) {
         Lista.load(context) { bump++ }
     }
+    // o detector devolve o endereço de dados do site; o app passa a ler esse endereço direto
+    LaunchedEffect(zone) {
+        val achado = WebActivity.ultimoAchado
+        if (zone == Z.IPTV && achado.isNotEmpty()) {
+            WebActivity.ultimoAchado = ""
+            Store.setSite(iptvSlot, "", achado)
+            bump++
+            abrirServico(achado)
+        }
+    }
     LaunchedEffect(Unit) {
         val a = withContext(Dispatchers.Default) { Antena.cards(context) }
         if (a.isNotEmpty()) {
@@ -1417,6 +1427,10 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                         loginField = 0
                         iptvFirst = false
                     }
+                    "Proxy das conexões" -> askText("Proxy no formato servidor:porta (vazio desliga)", Store.proxy, false) { t ->
+                        Store.proxy = t.trim()
+                        showToast(if (t.isBlank()) "Proxy desligado. Reabra o app para valer." else "Proxy definido. Reabra o app para valer.")
+                    }
                     "Conteúdo adulto" -> {
                         if (adultoOk) {
                             askText("Nova senha (4 dígitos)", "", true) { t ->
@@ -1880,6 +1894,7 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                 val temConta = Store.acc(iptvSlot).first.isNotBlank()
                 val n = when (iptvTab) {
                     0 -> if (temConta) 8 else 6
+                    2 -> 4
                     else -> 3
                 }
                 when (a) {
@@ -1929,12 +1944,20 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                         else -> when (loginField) {
                             0 -> confirmar = "sites"
                             1 -> iptvSlot = (iptvSlot + 1) % S
-                            else -> askText("Endereço do serviço aberto", Store.site(iptvSlot).second.ifBlank { "https://" }, false) { t ->
+                            2 -> askText("Endereço do serviço aberto", Store.site(iptvSlot).second.ifBlank { "https://" }, false) { t ->
                                 val u = WebActivity.fix(t)
                                 if (u.isBlank()) showToast("Endereço vazio.") else {
                                     Store.setSite(iptvSlot, "", u)
                                     bump++
                                     abrirServico(u)
+                                }
+                            }
+                            else -> {
+                                val u = Store.site(iptvSlot).second
+                                if (u.isBlank()) showToast("Guarde um endereço antes de detectar.")
+                                else {
+                                    showToast("Abrindo o site para ver de onde ele busca os dados…")
+                                    WebActivity.detectar(context, u)
                                 }
                             }
                         }
@@ -2567,6 +2590,10 @@ private fun settingBody(
         "Conta IPTV" ->
             (if (iptvSaved) "Conta conectada: $iptvTotal itens carregados." else "Nenhuma conta conectada.") + nl + nl +
                 "OK abre a tela para entrar, trocar ou remover a sua conta licenciada. Os dados ficam só neste aparelho."
+        "Proxy das conexões" ->
+            (if (Store.proxy.isBlank()) "Sem proxy." else "Usando " + Store.proxy + ".") + nl + nl +
+                "Faz as conexões de IPTV e de vídeo saírem por um servidor intermediário, no formato servidor:porta. " +
+                "Serve quando o seu provedor só libera certos endereços. Vale para a lista e para a reprodução. Precisa reabrir o app."
         "Conteúdo adulto" ->
             (if (adultoOk) "Liberado nesta sessão." else "Bloqueado.") + nl + nl +
                 "A aba Adulto só aparece depois que você digita a senha, e volta a ficar bloqueada toda vez que o app é aberto. " +
@@ -2691,6 +2718,7 @@ private fun IptvBox(
                 else -> {
                     val v = Store.site(slot).second
                     linha("Endereço do serviço aberto", v.ifBlank { "https://exemplo.com" }, v.isBlank(), 2)
+                    linha("Detectar de onde o site busca os dados", if (v.isBlank()) "guarde um endereço antes" else "abre o site e mostra o que ele baixa", v.isBlank(), 3)
                     Spacer(Modifier.height(u(4)))
                     Text(
                         if (servico.isNotBlank()) "Último serviço trazido: $servico. O conteúdo aparece nas suas abas, com a fonte indicada no começo da reprodução."

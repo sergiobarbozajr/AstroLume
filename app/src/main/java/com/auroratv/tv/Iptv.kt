@@ -27,6 +27,19 @@ object Iptv {
 
     private fun has(s: String, vararg k: String): Boolean = k.any { s.contains(it) }
 
+    /** Proxy configurado, para as chamadas à lista do provedor saírem pelo mesmo caminho do vídeo. */
+    fun proxy(): java.net.Proxy? {
+        val p = Store.proxy
+        if (p.isBlank()) return null
+        return try {
+            val h = p.substringBefore(':').trim()
+            val porta = p.substringAfter(':', "8080").trim().toIntOrNull() ?: 8080
+            if (h.isEmpty()) null else java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(h, porta))
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
     /** Ano do conteúdo: o que o provedor mandou, ou o que está entre parênteses no nome. */
     fun anoDe(nome: String, data: String): Int {
         Regex("(19|20)\\d{2}").find(data)?.let { return it.value.toInt() }
@@ -84,7 +97,8 @@ object Iptv {
     )
 
     private fun once(urlStr: String, timeout: Int, agent: String): String? {
-        val c = (URL(urlStr).openConnection() as HttpURLConnection).apply {
+        val px = proxy()
+        val c = (if (px != null) URL(urlStr).openConnection(px) else URL(urlStr).openConnection() as HttpURLConnection).let { it as HttpURLConnection }.apply {
             connectTimeout = min(timeout, 15000)
             readTimeout = timeout
             instanceFollowRedirects = true

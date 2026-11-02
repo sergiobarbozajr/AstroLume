@@ -120,6 +120,16 @@ class Playback(private val context: Context) {
     // conexão reforçada: OkHttp com pool de conexões, nova tentativa automática de conexão
     // e redirecionamentos entre http e https
     private val ok = okhttp3.OkHttpClient.Builder()
+        // proxy, quando você configurar um: alguns provedores só liberam de certos endereços
+        .apply {
+            val p = Store.proxy
+            if (p.isNotBlank()) try {
+                val h = p.substringBefore(':').trim()
+                val porta = p.substringAfter(':', "8080").trim().toIntOrNull() ?: 8080
+                if (h.isNotEmpty()) proxy(java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress(h, porta)))
+            } catch (e: Throwable) {
+            }
+        }
         .connectTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
         .readTimeout(25, java.util.concurrent.TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)

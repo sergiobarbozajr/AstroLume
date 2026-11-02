@@ -151,6 +151,7 @@ val SETTING_ITEMS = listOf(
     SettingItem("Som do aplicativo", null),
     SettingItem("Canais fora do ar", "hideoff"),
     SettingItem("Rede e internet", null),
+    SettingItem("Proxy das conexões", null),
     SettingItem("Guia de imagem", null),
     SettingItem("Teste de tela", null),
     SettingItem("Mapear controle remoto", null),
@@ -220,6 +221,14 @@ object Store {
     var musicName: String
         get() = sp.getString("music_name", "") ?: ""
         set(v) = sp.edit().putString("music_name", v).apply()
+
+    /**
+     * Proxy para as conexões de IPTV, no formato "servidor:porta" (vazio = sem proxy).
+     * Alguns provedores só aceitam conexão vinda de um endereço específico; é para isso.
+     */
+    var proxy: String
+        get() = sp.getString("proxy", "") ?: ""
+        set(v) = sp.edit().putString("proxy", v.trim()).apply()
 
     /** Senha do conteúdo adulto. Começa em 0000 e você pode trocar nas configurações. */
     var adultPin: String
