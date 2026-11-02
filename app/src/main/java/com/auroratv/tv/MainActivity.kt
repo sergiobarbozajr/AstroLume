@@ -2112,20 +2112,27 @@ private fun Sidebar(nav: Int, focused: Boolean, adultoOk: Boolean) {
             val pos = vis.indexOf(nav).coerceAtLeast(0)
             val itemH = u(46)
             val livre = maxHeight - u(42)
-            val cabem = max(3, (livre / itemH).toInt())
+            val cabem = max(3, (livre / (itemH + u(4))).toInt())
             val inicio = when {
                 vis.size <= cabem -> 0
                 pos < cabem - 1 -> 0
                 else -> min(vis.size - cabem, pos - cabem + 2)
             }
+            // o espaço que sobra vira folga igual entre as abas, em vez de um vazio no fim:
+            // as abas ficam distribuídas dentro do painel, sem nenhuma encostando na borda
+            val mostradas = min(vis.size, inicio + cabem) - inicio
+            val temMais = inicio + cabem < vis.size
+            val sobra = livre - itemH * mostradas - (if (temMais) u(20) else u(0))
+            val folga = (sobra / (mostradas + 1)).coerceIn(u(0), u(14))
             Column(Modifier.fillMaxSize()) {
                 Box(Modifier.padding(start = u(10), bottom = u(8))) { LogoSmall(fontPx) }
                 for (p in inicio until min(vis.size, inicio + cabem)) {
                     val i = vis[p]
                     NavItem(SECTIONS[i], focused && i == nav, !focused && i == nav)
+                    Spacer(Modifier.height(folga))
                 }
                 Spacer(Modifier.weight(1f))
-                if (inicio + cabem < vis.size) {
+                if (temMais) {
                     Text("▾", color = Color(0x99AEBBD2), fontSize = ts(16), modifier = Modifier.padding(start = u(22)))
                 }
             }
