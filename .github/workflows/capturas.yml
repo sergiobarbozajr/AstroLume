@@ -3,7 +3,7 @@ name: Capturas dos temas (emulador Android 14)
 on:
   push:
     branches: [ 'teste-*' ]
-    paths-ignore: [ 'home/**', '.github/workflows/home.yml' ]
+    paths-ignore: [ 'home/**', '.github/workflows/home.yml', '**.md' ]
   workflow_dispatch:
 
 permissions:
