@@ -2,7 +2,21 @@
 
 Feito a partir dos commits do `main`. Versão = `versionName` do `app/build.gradle.kts`.
 
-## 0.44 — em teste
+## 0.45 — em teste
+
+- **Modo seta.** Em vez de o foco pular de item em item, aparece uma seta na tela que as teclas
+  do controle movem livremente, e o OK clica no que estiver embaixo dela. Vale no menu, no
+  conteúdo, nas configurações e nos dois teclados.
+- O botão que liga e desliga é **ensinado por você**, no terceiro passo de *Mapear controle
+  remoto*. Segurar VOLTAR desliga sempre, como saída de emergência.
+- Como funciona por dentro: a seta não manda toque nenhum na tela. Ela só diz qual item está
+  embaixo dela, e o app move o foco para lá — o OK continua sendo o mesmo OK, pelo mesmo
+  caminho. Nada do que já funcionava trocou de rota.
+- **Fora do AstroLume não vale**, e isso é limite do Android, não escolha de implementação: um
+  app comum não pode tocar na tela de outro app. Só um Serviço de Acessibilidade poderia, e foi
+  decidido não pedir essa permissão.
+
+## 0.44
 
 - **Piscada na reprodução, segunda causa.** A decisão "esta TV não aguenta o reforço de imagem na
   GPU" valia só até o fim do título. Cada filme novo tentava o reforço outra vez, perdia quadros

@@ -70,6 +70,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -401,6 +404,8 @@ private fun keyToAct(e: androidx.compose.ui.input.key.KeyEvent): String? {
         Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.MediaPlayPause -> "ok"
         Key.Back, Key.Escape, Key.ButtonB, Key.Backspace -> "back"
         Key.F -> "fav"
+        // atalho fixo para a seta, além do botão que a pessoa ensina no mapeamento do controle
+        Key.F2, Key.Insert -> "seta"
         else -> null
     }
 }
@@ -1346,13 +1351,17 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
             showToast("Mapeamento padrão restaurado.")
             return
         }
-        val action = if (keymapStep == 0) "back" else "home"
+        val action = when (keymapStep) {
+            0 -> "back"
+            1 -> "home"
+            else -> "seta"
+        }
         customKeys = customKeys + (code to action)
         Store.keymap = customKeys.entries.joinToString(",") { it.key.toString() + ":" + it.value }
         keymapStep++
-        if (keymapStep > 1) {
+        if (keymapStep > 2) {
             zone = Z.CONTENT
-            showToast("Controle mapeado e salvo.")
+            showToast("Controle mapeado e salvo. O botão da seta liga e desliga o modo seta.")
         }
     }
 
@@ -1865,9 +1874,92 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
         L("FIM DO TESTE")
     }
 
+    /** O item que está em foco agora, no nome que a seta usa. Serve para a seta nascer em cima dele. */
+    fun idDoFoco(): String = when {
+        tecTit != null -> "tecla:$tecR:$tecC"
+        kbd -> "busca:$kr:$kc"
+        zone == Z.NAV -> "nav:$nav"
+        sec.kind == "settings" -> "set:$sidx"
+        else -> "card:$row:$col"
+    }
+
+    /**
+     * A seta parou em cima de algo: o foco do app vai para lá.
+     * A seta nunca clica — quem clica continua sendo o OK, pelo mesmo caminho de sempre.
+     */
+    fun focoDaSeta() {
+        val id = Ponteiro.sob() ?: return
+        val p = id.split(":")
+        when (p[0]) {
+            "nav" -> {
+                zone = Z.NAV
+                nav = p[1].toInt().coerceIn(0, SECTIONS.size - 1)
+            }
+            "card" -> {
+                if (zone != Z.CONTENT) zone = Z.CONTENT
+                kbd = false
+                row = p[1].toInt()
+                col = p[2].toInt()
+            }
+            "set" -> {
+                if (zone != Z.CONTENT) zone = Z.CONTENT
+                editing = false
+                sidx = p[1].toInt()
+            }
+            "tecla" -> {
+                tecR = p[1].toInt()
+                tecC = p[2].toInt()
+            }
+            "busca" -> {
+                kr = p[1].toInt()
+                kc = p[2].toInt()
+            }
+        }
+    }
+
     fun act(a: String) {
         navAt = android.os.SystemClock.uptimeMillis()
         if (zone != Z.PLAYER && !(zone == Z.SOUND && sndFromPlayer)) Sound.click()
+        // o botão ensinado para a seta liga e desliga, de qualquer tela
+        if (a == "seta") {
+            if (Ponteiro.alternar()) {
+                Ponteiro.irPara(idDoFoco())
+                showToast("Modo seta ligado · as setas movem a seta, OK clica · segure VOLTAR para sair")
+            } else {
+                showToast("Modo seta desligado.")
+            }
+            return
+        }
+        // seta ligada: as setas movem a seta; OK, Voltar e Início seguem o caminho normal,
+        // já com o foco onde a seta parou
+        // só nas telas onde a seta tem alvo registrado: menu, conteúdo, configurações e teclados.
+        // No player as setas pulam 10 s e no painel de IPTV elas andam pelos campos — se a seta
+        // engolisse as teclas ali, a pessoa ficaria sem como navegar.
+        if (Ponteiro.ligado && (zone == Z.NAV || zone == Z.CONTENT || tecTit != null)) {
+            when (a) {
+                "up" -> {
+                    Ponteiro.mover(0, -1)
+                    focoDaSeta()
+                    return
+                }
+                "down" -> {
+                    Ponteiro.mover(0, 1)
+                    focoDaSeta()
+                    return
+                }
+                "left" -> {
+                    Ponteiro.mover(-1, 0)
+                    focoDaSeta()
+                    return
+                }
+                "right" -> {
+                    Ponteiro.mover(1, 0)
+                    focoDaSeta()
+                    return
+                }
+                else -> focoDaSeta()
+            }
+        }
         // teclado aberto: ele atende primeiro, em qualquer tela, e sai sozinho no PRONTO
         if (tecTit != null) {
             tecAct(a)
@@ -2112,6 +2204,10 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
             .fillMaxSize()
             // sem pintar preto aqui: a tela já é preta atrás e o fundo cobre tudo.
             // era mais uma pintura de tela cheia a cada quadro, jogada fora.
+            .onGloballyPositioned {
+                Ponteiro.largura = it.size.width.toFloat()
+                Ponteiro.altura = it.size.height.toFloat()
+            }
             .focusRequester(focus)
             .onPreviewKeyEvent { e ->
                 if (zone == Z.KEYMAP) {
@@ -2121,8 +2217,15 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                     val a = keyToAct(e)
                     if (a == null) false
                     else {
-                        if (e.type == KeyEventType.KeyDown) act(a)
-                        true
+                        // segurar VOLTAR sempre desliga a seta, mesmo que o botão ensinado falhe
+                        if (a == "back" && Ponteiro.ligado && e.nativeKeyEvent.repeatCount >= 6) {
+                            Ponteiro.ligar(false)
+                            showToast("Modo seta desligado.")
+                            true
+                        } else {
+                            if (e.type == KeyEventType.KeyDown) act(a)
+                            true
+                        }
                     }
                 }
             }
@@ -2201,7 +2304,36 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                 }
             }
         }
+        if (Ponteiro.ligado && zone != Z.INTRO) SetaNaTela()
         if (zone == Z.INTRO) IntroAnim { finishIntro() }
+    }
+}
+
+/**
+ * A seta do modo seta. Desenhada à mão em vez de imagem: são quatro linhas, custam quase nada,
+ * e acompanham a escala da tela. O contorno escuro é o que faz ela aparecer tanto sobre capa
+ * clara quanto sobre fundo escuro.
+ */
+@Composable
+private fun SetaNaTela() {
+    val k = LocalK.current * LocalDensity.current.density
+    androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+        val px = Ponteiro.x
+        val py = Ponteiro.y
+        if (px < 0f || py < 0f) return@Canvas
+        val t = 15f * k
+        val corpo = Path().apply {
+            moveTo(px, py)
+            lineTo(px, py + t * 1.5f)
+            lineTo(px + t * 0.42f, py + t * 1.12f)
+            lineTo(px + t * 0.72f, py + t * 1.78f)
+            lineTo(px + t * 0.98f, py + t * 1.62f)
+            lineTo(px + t * 0.68f, py + t * 0.98f)
+            lineTo(px + t * 1.12f, py + t * 0.92f)
+            close()
+        }
+        drawPath(corpo, Color(0xCC000000), style = Stroke(width = 4.5f * k))
+        drawPath(corpo, Color.White)
     }
 }
 
@@ -2247,7 +2379,7 @@ private fun Sidebar(nav: Int, focused: Boolean, adultoOk: Boolean) {
                 Box(Modifier.padding(start = u(10), bottom = u(8))) { LogoSmall(fontPx) }
                 for (p in inicio until min(vis.size, inicio + cabem)) {
                     val i = vis[p]
-                    NavItem(SECTIONS[i], focused && i == nav, !focused && i == nav)
+                    Box(Modifier.alvo("nav:$i")) { NavItem(SECTIONS[i], focused && i == nav, !focused && i == nav) }
                     Spacer(Modifier.height(folga))
                 }
                 Spacer(Modifier.weight(1f))
@@ -2492,7 +2624,11 @@ private fun RowsView(rows: List<RowData>, base: Int, active: Boolean, row: Int, 
                     if (isActive) rs.animateScrollToItem(max(0, col - 3))
                 }
                 LazyRow(state = rs, horizontalArrangement = Arrangement.spacedBy(u(16)), modifier = Modifier.padding(vertical = u(6))) {
-                    itemsIndexed(r.cards) { ci, c -> CardView(c, isActive && col == ci, favs.contains(c.name), health[c.name] ?: 0) }
+                    itemsIndexed(r.cards) { ci, c ->
+                        Box(Modifier.alvo("card:" + (ri + base) + ":" + ci)) {
+                            CardView(c, isActive && col == ci, favs.contains(c.name), health[c.name] ?: 0)
+                        }
+                    }
                 }
             }
         }
@@ -2581,7 +2717,7 @@ private fun ContentScreen(
                                 else -> key
                             }
                             Box(
-                                Modifier.weight(1f).height(u(40))
+                                Modifier.weight(1f).height(u(40)).alvo("busca:$ri:$ci")
                                     .background(if (key == "MIC" && listening) CLive else if (f) CCardHi else CCard, ks)
                                     .then(if (f) Modifier.border(BorderStroke(u(2), Color(0xFFCFE9FF)), ks) else Modifier),
                                 contentAlignment = Alignment.Center
@@ -2615,7 +2751,7 @@ private fun SettingsScreen(sidx: Int, editing: Boolean, focused: Boolean, value:
                     val on = focused && i == sidx
                     val shape = RoundedCornerShape(u(12))
                     Box(
-                        Modifier.fillMaxWidth().height(u(58))
+                        Modifier.fillMaxWidth().height(u(58)).alvo("set:$i")
                             .background(if (on) CCardHi else CCard, shape)
                             .then(
                                 if (on) Modifier.border(BorderStroke(u(2), if (editing) CWarm else Color(0xFFCFE9FF)), shape) else Modifier
@@ -2690,7 +2826,9 @@ private fun settingBody(
         "Guia de imagem" -> imageGuide() + nl + nl + hdrLine(context) + nl + "O HDR só aparece em conteúdo que já é HDR."
         "Teste de tela" -> "Cores puras em tela cheia para achar linhas, manchas e LEDs com defeito." + nl + nl + "OK para começar."
                     "Mapear controle remoto" ->
-            "Ensina ao app qual botão do seu controle é o VOLTAR e qual é o INÍCIO." + nl + nl +
+            "Ensina ao app qual botão do seu controle é o VOLTAR, qual é o INÍCIO e qual liga o MODO SETA." + nl + nl +
+                "MODO SETA: em vez de o foco pular de item em item, aparece uma seta na tela que as teclas movem livremente, e o OK clica no que estiver embaixo dela. Serve no menu, no conteúdo, nas configurações e nos teclados. Para sair, aperte o mesmo botão ou segure VOLTAR." + nl + nl +
+                "Fora do AstroLume a seta não vale: o Android não deixa um app comum tocar na tela de outro app. Dentro do navegador do app, a seta já existia e continua." + nl + nl +
                 (if (customKeys.isEmpty()) "Agora: padrão do Android." else "Agora: " + customKeys.entries.joinToString(" · ") { android.view.KeyEvent.keyCodeToString(it.key) + " = " + it.value }) +
                 nl + nl + "OK para começar."
         "Bloquear anúncios (DNS)" ->
@@ -2935,7 +3073,7 @@ private fun TecladoBox(titulo: String, texto: String, secreto: Boolean, maiusc: 
                             else -> key
                         }
                         Box(
-                            Modifier.weight(1f).height(u(42))
+                            Modifier.weight(1f).height(u(42)).alvo("tecla:$ri:$ci")
                                 .background(if (key == "MIC" && ouvindo) CLive else if (f) CCardHi else CCard, ks)
                                 .then(if (f) Modifier.border(BorderStroke(u(2), Color(0xFFCFE9FF)), ks) else Modifier),
                             contentAlignment = Alignment.Center
@@ -2963,6 +3101,7 @@ private fun Hint(zone: Z, sec: Section, editing: Boolean, kbd: Boolean, modifier
         zone == Z.SOUND -> "▲▼ escolhe · ◀ ▶ ajustam na hora · Voltar salva"
         zone == Z.READER -> "Voltar ou OK fecha"
         zone == Z.CONTENT && sec.kind == "settings" -> if (editing) "◀ ▶ mudam o valor · Voltar salva e sai" else "▲▼ escolhe · OK entra no item · Voltar ao menu"
+        Ponteiro.ligado -> "MODO SETA · setas movem a seta · OK clica · segure VOLTAR para sair"
         zone == Z.CONTENT && kbd -> "setas no teclado · OK digita · Voltar fecha"
         zone == Z.CONTENT -> "setas movem · OK abre · OK 2x favorita · Voltar sai"
         else -> "▲▼ menu · ▶ ou OK entra"
@@ -3366,13 +3505,17 @@ private fun KeymapBox(step: Int, last: String) {
             Text("Mapear o controle", color = CInk, fontSize = ts(30), fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(u(16)))
             Text(
-                if (step == 0) "Aperte agora o botão VOLTAR do seu controle." else "Agora aperte o botão INÍCIO (ou o que deve voltar ao menu).",
+                when (step) {
+                    0 -> "Aperte agora o botão VOLTAR do seu controle."
+                    1 -> "Agora aperte o botão INÍCIO (ou o que deve voltar ao menu)."
+                    else -> "Agora aperte o botão que vai ligar e desligar o MODO SETA.\nPode ser qualquer um que você não use."
+                },
                 color = CLight, fontSize = ts(20), textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(u(16)))
             Text(if (last.isEmpty()) "Esperando um botão…" else "Último botão: $last", color = CAccent, fontSize = ts(18))
             Spacer(Modifier.height(u(12)))
-            Text("Passo ${step + 1} de 2 · OK cancela e usa o padrão", color = CDim, fontSize = ts(14))
+            Text("Passo ${step + 1} de 3 · OK cancela e usa o padrão", color = CDim, fontSize = ts(14))
         }
     }
 }
