@@ -1284,7 +1284,7 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
             "enh" -> {
                 enhance = (enhance + d + ENHANCE_NAMES.size) % ENHANCE_NAMES.size
                 Store.enhance = enhance
-                pb.setAi(enhance)
+                pb.setAiDoMenu(enhance)
             }
             "city" -> {
                 cityIdx = (cityIdx + d + catalog.cities.size) % catalog.cities.size

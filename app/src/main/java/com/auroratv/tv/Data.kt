@@ -196,6 +196,18 @@ object Store {
         get() = int("meteor")
         set(v) = putInt("meteor", v)
 
+    /**
+     * Esta TV já perdeu quadros com o reforço de imagem na GPU: 1 = não tentar mais.
+     *
+     * Antes a decisão valia só até o fim do título, então cada filme novo tentava o reforço de
+     * novo, perdia quadros de novo e tinha que trocar o player de novo — e trocar o player apaga
+     * a tela. Uma vez que a TV mostrou que não aguenta, não há por que insistir: fica guardado.
+     * Mexer na opção do Assistente IA no menu limpa esta marca, porque aí o usuário pediu.
+     */
+    var gpuOff: Int
+        get() = int("gpu_off")
+        set(v) = putInt("gpu_off", v)
+
     /** Som IA: 1 automático (padrão), 0 desligado. */
     var somIa: Int
         get() = int("som_ia", 1)

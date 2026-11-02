@@ -2,7 +2,27 @@
 
 Feito a partir dos commits do `main`. Versão = `versionName` do `app/build.gradle.kts`.
 
-## 0.42 — em teste
+## 0.44 — em teste
+
+- **Piscada na reprodução, segunda causa.** A decisão "esta TV não aguenta o reforço de imagem na
+  GPU" valia só até o fim do título. Cada filme novo tentava o reforço outra vez, perdia quadros
+  outra vez e trocava o player outra vez — e trocar o player apaga a tela. Agora a decisão fica
+  guardada no aparelho: uma vez que a TV mostrou que não aguenta, não se insiste. Mexer na opção
+  do Assistente IA no menu limpa a marca, porque aí foi pedido.
+
+## 0.43
+
+- **Piscada na reprodução, primeira causa.** Numa lista adaptativa a TV troca de faixa de
+  qualidade várias vezes por minuto, e o app recalculava o plano de imagem a cada troca; sair de
+  "reforço para 1080p" para "direto" refaz o player inteiro. Agora o plano é escolhido uma vez
+  por título.
+- Refazer o player por perda de quadros ficou limitado a uma vez a cada 20 s.
+- A tela de SEM SINAL, que é preta e cobre tudo, só aparece se o problema durar mais de 1,5 s:
+  falha de meio segundo que o player resolve sozinho também aparecia como piscada.
+- Portão novo: refazer o player deixa marca no log, e o teste reprova se acontecer mais de uma
+  vez durante a reprodução. Foi ele que mostrou que a 0.43 ainda piscava.
+
+## 0.42
 
 - **Um teclado só no app inteiro.** Endereço, usuário, senha, proxy e senha do adulto deixaram
   de abrir a caixa de texto do Android e passaram a usar as mesmas teclas da busca. Abre ao

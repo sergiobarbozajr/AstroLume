@@ -270,8 +270,12 @@ class Playback(private val context: Context) {
     private var aiKey = ""
     private var aiMode = 1
 
-    /** A TV perdeu quadros com o reforço neste vídeo: segue sem processamento na GPU. */
-    private var gpuOff = false
+    /**
+     * A TV perdeu quadros com o reforço: segue sem processamento na GPU.
+     * Fica guardado no aparelho — insistir a cada título custava uma troca de player por título,
+     * e cada troca apaga a tela. Mexer na opção no menu limpa a marca.
+     */
+    private var gpuOff = Store.gpuOff == 1
     private val dropHist = LongArray(10)
     private var dropIdx = 0
 
@@ -292,6 +296,14 @@ class Playback(private val context: Context) {
      * Mudança de faixa depois disso não mexe mais nele. Trocar a opção no menu continua valendo
      * na hora, porque aí o usuário pediu e espera a imagem recarregar.
      */
+    /** O usuário mexeu na opção do Assistente IA: dá nova chance ao reforço nesta TV. */
+    fun setAiDoMenu(mode: Int) {
+        gpuOff = false
+        Store.gpuOff = 0
+        aiKey = ""
+        setAi(mode)
+    }
+
     fun setAi(mode: Int, porTamanho: Boolean = false) {
         aiMode = mode
         // "" = título novo, ainda sem plano; "wait" = plano provisório de antes de a resolução chegar
@@ -332,6 +344,7 @@ class Playback(private val context: Context) {
         ) {
             android.util.Log.i("AuroraAI", "fluidez: $droppedLast10s quadros perdidos em 10 s, reforço desligado")
             gpuOff = true
+            Store.gpuOff = 1
             aiKey = ""
             dropHist.fill(0L)
             main.post {
@@ -397,7 +410,7 @@ class Playback(private val context: Context) {
         connecting = true
         bufferingSec = 0
         resumeAt = if (c.kind == "stream") 0L else Store.resumeGet(u)
-        gpuOff = false
+        gpuOff = Store.gpuOff == 1
         aiKey = ""
         dropHist.fill(0L)
         // o vídeo anterior estava com reforço: começa o novo num player limpo (direto para a IA da TV)
@@ -575,6 +588,7 @@ class Playback(private val context: Context) {
             code in 7000..7999 -> {
                 // a TV não aguentou o processamento de imagem: desliga o reforço neste vídeo e toca sem ele
                 gpuOff = true
+                Store.gpuOff = 1
                 aiKey = ""
                 onEnhanceFailed?.invoke()
                 main.post {
