@@ -596,16 +596,6 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
     LaunchedEffect(Unit) {
         Lista.load(context) { bump++ }
     }
-    // o detector devolve o endereço de dados do site; o app passa a ler esse endereço direto
-    LaunchedEffect(zone) {
-        val achado = WebActivity.ultimoAchado
-        if (zone == Z.IPTV && achado.isNotEmpty()) {
-            WebActivity.ultimoAchado = ""
-            Store.setSite(iptvSlot, "", achado)
-            bump++
-            abrirServico(achado)
-        }
-    }
     LaunchedEffect(Unit) {
         val a = withContext(Dispatchers.Default) { Antena.cards(context) }
         if (a.isNotEmpty()) {
@@ -1056,6 +1046,17 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                     WebActivity.open(context, url)
                 }
             }
+        }
+    }
+
+    // o detector devolve o endereço de dados do site; o app passa a ler esse endereço direto
+    LaunchedEffect(zone) {
+        val achado = WebActivity.ultimoAchado
+        if (zone == Z.IPTV && achado.isNotEmpty()) {
+            WebActivity.ultimoAchado = ""
+            Store.setSite(iptvSlot, "", achado)
+            bump++
+            abrirServico(achado)
         }
     }
 
