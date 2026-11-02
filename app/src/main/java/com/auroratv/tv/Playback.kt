@@ -25,6 +25,8 @@ import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
+import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import org.json.JSONObject
@@ -105,8 +107,12 @@ class Playback(private val context: Context) {
     private var swappedFormat = false
     private var bufferingSec = 0
     private var everReady = false
-    // as primeiras tentativas dão tempo ao servidor em vez de atropelá-lo
-    private val delays = longArrayOf(3000, 6000, 12000, 20000, 30000, 30000)
+    /**
+     * Espera antes de cada nova tentativa: sempre 30 s, inclusive a primeira.
+     * Servidor de IPTV costuma demorar para liberar o canal; voltar antes disso só faz ele
+     * recomeçar do zero. Seis tentativas = três minutos antes de desistir.
+     */
+    private val delays = longArrayOf(30000, 30000, 30000, 30000, 30000, 30000)
     private var limitMode = false
     private var limitTries = 0
     private val triedExt = HashSet<String>()
@@ -118,7 +124,7 @@ class Playback(private val context: Context) {
      * e reconectar cedo só faz ele começar tudo de novo e demorar mais.
      */
     val patienceSec = 30
-    private val patienceDepois = 20
+    private val patienceDepois = 30
 
     /** Chamado quando a TV não aguenta o realce de imagem: o app desliga o realce e segue tocando. */
     var onEnhanceFailed: (() -> Unit)? = null
@@ -150,6 +156,23 @@ class Playback(private val context: Context) {
     // então o leitor aceita quadros não-chave e detecta as unidades de acesso por conta própria
     private val tsFlags = DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
     private val extractors = DefaultExtractorsFactory().setTsExtractorFlags(tsFlags).setConstantBitrateSeekingEnabled(true)
+
+    /**
+     * Quando o player, por conta própria, tenta de novo.
+     *
+     * O ExoPlayer, por padrão, refaz o pedido sozinho em 0, 1 e 2 segundos quando o servidor
+     * falha. Era isso que ainda batia no servidor logo depois do clique, antes da nossa espera de
+     * 30 s. Agora, enquanto o canal está abrindo, ele não tenta sozinho: a falha vem direto para
+     * a nossa espera, e a primeira nova tentativa só sai depois de 30 s.
+     *
+     * Depois que o vídeo já começou, um pedaço que falhou continua sendo buscado de novo na hora,
+     * como antes: esperar 30 s por um pedaço de 2 s esvaziaria o buffer e travaria o vídeo, e essa
+     * busca não aparece para quem está assistindo.
+     */
+    private val politicaDeErro = object : DefaultLoadErrorHandlingPolicy() {
+        override fun getRetryDelayMsFor(info: LoadErrorHandlingPolicy.LoadErrorInfo): Long =
+            if (!everReady) C.TIME_UNSET else super.getRetryDelayMsFor(info)
+    }
 
     private val listener = object : Player.Listener {
         override fun onAudioSessionIdChanged(audioSessionId: Int) {
@@ -271,11 +294,11 @@ class Playback(private val context: Context) {
     private var aiMode = 1
 
     /**
-     * A TV perdeu quadros com o reforço: segue sem processamento na GPU.
-     * Fica guardado no aparelho — insistir a cada título custava uma troca de player por título,
-     * e cada troca apaga a tela. Mexer na opção no menu limpa a marca.
+     * Só vira true se o processador de vídeo da TV **falhar** com o reforço (erro 7000 do player,
+     * em que o vídeo nem toca). Perder quadros não desliga mais nada: a decisão é manter a
+     * melhoria de imagem sempre que o vídeo toca. Vale só para o título atual.
      */
-    private var gpuOff = Store.gpuOff == 1
+    private var gpuOff = false
     private val dropHist = LongArray(10)
     private var dropIdx = 0
 
@@ -299,7 +322,6 @@ class Playback(private val context: Context) {
     /** O usuário mexeu na opção do Assistente IA: dá nova chance ao reforço nesta TV. */
     fun setAiDoMenu(mode: Int) {
         gpuOff = false
-        Store.gpuOff = 0
         aiKey = ""
         setAi(mode)
     }
@@ -337,22 +359,14 @@ class Playback(private val context: Context) {
         dropHist[dropIdx] = now
         dropIdx = (dropIdx + 1) % dropHist.size
         droppedLast10s = if (old in 1..now) now - old else 0L
-        // com o reforço ligado, a TV começou a engasgar: desliga só o reforço e segue tocando
-        // refazer o player apaga a tela: no máximo uma vez a cada 20 s, para não virar piscada
-        if (effectsOn && player.isPlaying && droppedLast10s > 24 &&
-            android.os.SystemClock.uptimeMillis() - refeitoEm > 20_000L
-        ) {
-            android.util.Log.i("AuroraAI", "fluidez: $droppedLast10s quadros perdidos em 10 s, reforço desligado")
-            gpuOff = true
-            Store.gpuOff = 1
-            aiKey = ""
-            dropHist.fill(0L)
-            main.post {
-                rebuild()
-                setAi(aiMode)
-            }
+        // A melhoria de imagem fica ligada do começo ao fim. Antes, ao perder quadros, o app
+        // desligava o reforço e refazia o player — isso apagava a tela e a imagem caía de
+        // qualidade no meio do filme. Agora só mede e registra, para a gente acompanhar.
+        if (effectsOn && player.isPlaying && droppedLast10s > 24 && ++avisoQuadros % 6 == 1) {
+            android.util.Log.i("AuroraAI", "fluidez: $droppedLast10s quadros perdidos em 10 s, melhoria mantida")
         }
     }
+    private var avisoQuadros = 0
 
     // vigia o buffer: carregando por tempo demais = conexão lenta
     private val watch = object : Runnable {
@@ -410,7 +424,8 @@ class Playback(private val context: Context) {
         connecting = true
         bufferingSec = 0
         resumeAt = if (c.kind == "stream") 0L else Store.resumeGet(u)
-        gpuOff = Store.gpuOff == 1
+        gpuOff = false
+        avisoQuadros = 0
         aiKey = ""
         dropHist.fill(0L)
         // o vídeo anterior estava com reforço: começa o novo num player limpo (direto para a IA da TV)
@@ -452,6 +467,7 @@ class Playback(private val context: Context) {
     }
 
     private fun prepare() {
+        android.util.Log.i("AuroraRede", "abrindo")
         // reconectando no meio do filme: continua de onde estava, não do começo
         if (card?.kind != "stream" && everReady && player.currentPosition > 1000L) resumeAt = player.currentPosition
         try {
@@ -464,9 +480,10 @@ class Playback(private val context: Context) {
                 low.contains(".m3u8") -> HlsMediaSource.Factory(ds)
                     .setExtractorFactory(DefaultHlsExtractorFactory(tsFlags, true))
                     .setAllowChunklessPreparation(true)
+                    .setLoadErrorHandlingPolicy(politicaDeErro)
                     .createMediaSource(item)
-                low.contains(".mpd") -> DashMediaSource.Factory(ds).createMediaSource(item)
-                else -> ProgressiveMediaSource.Factory(ds, extractors).createMediaSource(item)
+                low.contains(".mpd") -> DashMediaSource.Factory(ds).setLoadErrorHandlingPolicy(politicaDeErro).createMediaSource(item)
+                else -> ProgressiveMediaSource.Factory(ds, extractors).setLoadErrorHandlingPolicy(politicaDeErro).createMediaSource(item)
             }
             if (card?.kind != "stream" && resumeAt > 0L) player.setMediaSource(src, resumeAt) else player.setMediaSource(src)
             player.prepare()
@@ -483,13 +500,14 @@ class Playback(private val context: Context) {
         if (limitMode) {
             // conta em uso em outra tela: tenta a cada 10 s, por até 5 minutos, até a outra tela liberar
             limitTries++
-            if (limitTries > 30) {
+            if (limitTries > 10) {
                 diag = diag?.let { Diag(it.title, it.layer, it.detail, "a outra tela não liberou · OK tenta de novo · Voltar sai") }
                 return
             }
-            diag = diag?.let { Diag(it.title, it.layer, it.detail, "reconectando sozinho quando a outra tela fechar · tentativa $limitTries em 10 s") }
+            diag = diag?.let { Diag(it.title, it.layer, it.detail, "reconectando sozinho quando a outra tela fechar · tentativa $limitTries em 30 s") }
+            android.util.Log.i("AuroraRede", "nova tentativa $limitTries em 30 s (conta em uso)")
             main.removeCallbacks(retryRun)
-            main.postDelayed(retryRun, 10000)
+            main.postDelayed(retryRun, 30000)
             return
         }
         if (attempt >= delays.size) {
@@ -499,6 +517,7 @@ class Playback(private val context: Context) {
         }
         val d = delays[attempt]
         attempt++
+        android.util.Log.i("AuroraRede", "nova tentativa $attempt em ${d / 1000} s")
         diag = diag?.let { Diag(it.title, it.layer, it.detail, it.fix.substringBefore(" ·") + " · tentativa $attempt de ${delays.size} em ${d / 1000} s") }
         main.removeCallbacks(retryRun)
         main.postDelayed(retryRun, d)
@@ -588,7 +607,6 @@ class Playback(private val context: Context) {
             code in 7000..7999 -> {
                 // a TV não aguentou o processamento de imagem: desliga o reforço neste vídeo e toca sem ele
                 gpuOff = true
-                Store.gpuOff = 1
                 aiKey = ""
                 onEnhanceFailed?.invoke()
                 main.post {

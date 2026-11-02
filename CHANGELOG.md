@@ -2,7 +2,26 @@
 
 Feito a partir dos commits do `main`. Versão = `versionName` do `app/build.gradle.kts`.
 
-## 0.45 — em teste
+## 0.46 — em teste
+
+- **Melhoria de imagem mantida do começo ao fim.** Ao perder quadros, o app desligava o reforço
+  de imagem e refazia o player: a tela apagava e a imagem caía de qualidade no meio do filme.
+  Agora a melhoria é aplicada ao tocar e fica. A perda de quadros passa só a ser medida e
+  registrada. A única exceção é o processador de vídeo da TV *falhar* com ela (o vídeo nem toca):
+  aí ela sai, só naquele título.
+- **Toda nova tentativa espera 30 s, inclusive a primeira.** Antes a primeira saía em 3 s.
+  Também a de "conta em uso em outra tela", que era a cada 10 s.
+- **O player não tenta mais sozinho enquanto o canal abre.** Por padrão o ExoPlayer refaz o
+  pedido em 0, 1 e 2 segundos quando o servidor falha — era isso que ainda batia no servidor logo
+  depois do clique, antes da espera de 30 s. Depois que o vídeo começou, um pedaço que falhou
+  continua sendo buscado na hora: esperar 30 s por um pedaço de 2 s travaria o vídeo.
+- Exceções que continuam imediatas, de propósito: trocar `.m3u8` ↔ `.ts` quando o servidor diz
+  que o formato não existe (é outro endereço, não o mesmo pedido de novo) e voltar ao ponto ao
+  vivo quando o vídeo fica para trás.
+- Portões novos: o teste reprova se a melhoria for pausada, se o vídeo de 480p não receber a
+  melhoria para 1080p, se houver nova tentativa antes de 30 s ou se ela não sair depois deles.
+
+## 0.45
 
 - **Modo seta.** Em vez de o foco pular de item em item, aparece uma seta na tela que as teclas
   do controle movem livremente, e o OK clica no que estiver embaixo dela. Vale no menu, no

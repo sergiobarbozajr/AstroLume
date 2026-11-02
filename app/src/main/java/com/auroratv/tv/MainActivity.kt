@@ -145,6 +145,9 @@ var testTheme = -1
 /** Só no APK de teste: abre o teclado do app sozinho, para a esteira conferir que ele abre, escreve e fecha. */
 var testTeclado: String? = null
 
+/** Só no APK de teste: toca um endereço e não faz mais nada, para medir quando vem a nova tentativa. */
+var testRede: String? = null
+
 class MainActivity : ComponentActivity() {
     lateinit var speech: ActivityResultLauncher<Intent>
     var onSpeech: ((String?) -> Unit)? = null
@@ -184,6 +187,7 @@ class MainActivity : ComponentActivity() {
         if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) testUrl = intent?.getStringExtra("aurora_test")
         if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) testTheme = intent?.getIntExtra("aurora_theme", -1) ?: -1
         if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) testTeclado = intent?.getStringExtra("aurora_teclado")
+        if ((applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0) testRede = intent?.getStringExtra("aurora_rede")
         Store.musicUri = ""
         customKeys = parseKeys(Store.keymap)
         val json = assets.open("catalog.json").bufferedReader().use { it.readText() }
@@ -1828,6 +1832,13 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                 if (player.isPlaying) player.pause() else player.play()
             }
         }
+    }
+
+    // teste das tentativas (só debug): abre um endereço que falha e deixa o relógio correr
+    LaunchedEffect(Unit) {
+        val tr = testRede ?: return@LaunchedEffect
+        delay(8000)
+        play(mkCard("Teste de rede", "Filme", "vod", 1, tr), emptyList())
     }
 
     // teste do teclado único (só debug): abre, escreve o que vier escrito e devolve no log
