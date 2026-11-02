@@ -1028,19 +1028,6 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
      * Se o endereço entregar uma lista no formato padrão (M3U ou Xtream), tudo entra nativo.
      * Se não entregar, o app avisa e abre o site no navegador da TV, sem fingir que deu certo.
      */
-    /** Qualquer endereço: vídeo direto, lista .m3u, catálogo JSON ou site. O app decide o formato. */
-    fun abrirEndereco(url: String) {
-        val u = url.trim()
-        val baixo = u.lowercase().substringBefore('?')
-        val ehVideo = baixo.endsWith(".m3u8") || baixo.endsWith(".ts") || baixo.endsWith(".mp4") ||
-            baixo.endsWith(".mkv") || u.startsWith("rtsp") || u.startsWith("rtmp")
-        if (ehVideo) {
-            abrirRede(u)
-            return
-        }
-        abrirServico(u)
-    }
-
     fun abrirServico(url: String) {
         showToast("Procurando o conteúdo…")
         Servico.abrir(url) { r ->
@@ -1071,6 +1058,19 @@ private fun AppBody(catalog: Catalog, activity: MainActivity) {
                 }
             }
         }
+    }
+
+    /** Qualquer endereço: vídeo direto, lista .m3u, catálogo JSON ou site. O app decide o formato. */
+    fun abrirEndereco(url: String) {
+        val u = url.trim()
+        val baixo = u.lowercase().substringBefore('?')
+        val ehVideo = baixo.endsWith(".m3u8") || baixo.endsWith(".ts") || baixo.endsWith(".mp4") ||
+            baixo.endsWith(".mkv") || u.startsWith("rtsp") || u.startsWith("rtmp")
+        if (ehVideo) {
+            abrirRede(u)
+            return
+        }
+        abrirServico(u)
     }
 
     // o detector devolve o endereço de dados do site; o app passa a ler esse endereço direto

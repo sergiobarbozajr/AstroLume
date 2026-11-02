@@ -23,6 +23,8 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Conferir a ordem das funcoes locais
+        run: python3 tools/ordem.py
       - name: Compilar
         run: gradle :app:assembleRelease :app:assembleDebug --no-daemon 2>&1 | tee build.log; test ${PIPESTATUS[0]} -eq 0
       - name: Mostrar erros de compilacao
